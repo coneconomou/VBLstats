@@ -1,6 +1,6 @@
 # Plan
 
-Show Big V finals results the way I like: a list of finals games, and for each game the final score (with quarters) plus the full box score.
+Show Big V stats the way I like: results by round (each game with final score, quarters and full box score), the ladder, and player season stats.
 
 ## Decisions
 - **Decided:** Static HTML/JS, no framework or build. Calls the NBL Synergy proxy directly (it allows CORS).
