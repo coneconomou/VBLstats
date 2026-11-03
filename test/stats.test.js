@@ -174,3 +174,18 @@ test('cleanFixtures drops placeholder games (Championship Women 2026 had a TBA f
   assert.equal(cleaned.length, season.data.length);
   assert.equal(gamesInRound(cleaned, season.includes, 'finals').length, 5);
 });
+
+test('defaultRound uses absolute times, not venue wall-clock times', () => {
+  // 8pm in Melbourne (10:00 UTC) in July. A Perth game at 6:30pm AWST is 10:30 UTC: not started yet,
+  // even though "18:30" < "20:00" as wall-clock strings.
+  const fx = (id, round, local, utc, status = 'SCHEDULED') => ({
+    fixtureId: id, fixtureType: 'REGULAR', roundNumber: round, status, startTimeLocal: local, startTimeUTC: utc,
+    competitors: [{ entityId: 'a' }, { entityId: 'b' }],
+  });
+  const fixtures = [
+    fx('m', '4', '2026-07-11T19:00:00', '2026-07-11T09:00:00', 'CONFIRMED'),
+    fx('p', '5', '2026-07-12T18:30:00', '2026-07-12T10:30:00'),
+  ];
+  assert.equal(defaultRound(fixtures, '2026-07-12T10:00:00'), '4');
+  assert.equal(defaultRound(fixtures, '2026-07-12T10:31:00'), '5');
+});

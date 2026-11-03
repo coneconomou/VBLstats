@@ -19,6 +19,8 @@ Show Big V stats the way I like: results by round (each game with final score, q
 - **Decided:** League dropdown (Big V / NBL1) in the header. NBL1 "competitions" are conference + gender (South Men, ... West Women) plus National Finals Men/Women. League and competition are remembered per league.
 - **Decided:** NBL1 via a local proxy that sends an nbl1.com.au Origin (their API refuses other origins). The owner chose this knowing it gets around NBL1's restriction and may break.
 - **Decided:** NBL1 season stats are summed from box scores (no full endpoint). NBL1 doesn't record fouls drawn, unsportsmanlike fouls, team rebounds or coach fouls: those show "–" or are hidden (FD column, Team/Coach row, "Draws fouls" leaders).
+- **Decided:** NBL1 season totals: games that fail to load are retried once, then the page says how many are missing and the incomplete totals aren't cached (next visit retries). Complete totals are rebuilt after 5 min so new games count.
+- **Decided:** Game times are compared/sorted by absolute UTC start (venue local time only for display), so NBL1's cross-time-zone conferences order correctly.
 - **Open:** Captain "(C)" marker: not in the Synergy data we fetch, so it's left out.
 - **Decided:** Runs as a desktop app via a shortcut (no install, no Electron): Edge app window + hidden local server, basketball icon (`app/icon.ico`). The app's browser profile has sync/implicit sign-in turned off.
 - **Open:** Hosting it online for phone use. Big V would work on any static host; NBL1 needs the serve.js proxy, so it would need a small server (or NBL1 left out online).

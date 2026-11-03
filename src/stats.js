@@ -41,6 +41,11 @@ export function gameState(status) {
   return 'upcoming';
 }
 
+// Absolute start time ("YYYY-MM-DDTHH:mm:ss" in UTC) for ordering and "has it started" checks.
+// startTimeLocal is venue wall-clock time, so comparing it across venues in different time zones
+// (e.g. Perth vs Melbourne in NBL1) or with the viewer's clock gives wrong answers.
+export const startKey = (f) => f.startTimeUTC ?? f.startTimeLocal;
+
 export function summariseFixture(fixture, includes) {
   const teams = [...fixture.competitors]
     // Home team on the left, like the BV site.
@@ -62,6 +67,7 @@ export function summariseFixture(fixture, includes) {
   return {
     id: fixture.fixtureId,
     start: fixture.startTimeLocal,
+    startUtc: startKey(fixture),
     state: gameState(fixture.status),
     type: fixture.fixtureType,
     round: roundKey(fixture),
@@ -96,16 +102,16 @@ export function gamesInRound(fixtures, includes, key) {
   return fixtures
     .filter((f) => roundKey(f) === key)
     .map((f) => summariseFixture(f, includes))
-    .sort((a, b) => a.start.localeCompare(b.start) || a.id.localeCompare(b.id));
+    .sort((a, b) => a.startUtc.localeCompare(b.startUtc) || a.id.localeCompare(b.id));
 }
 
 // The round of the most recent game that has started; before the season starts, the first round.
-// `now` is a local "YYYY-MM-DDTHH:mm:ss" string so it compares directly with startTimeLocal.
-export function defaultRound(fixtures, now) {
+// `nowUtc` is "YYYY-MM-DDTHH:mm:ss" in UTC, compared with each game's absolute start (startKey).
+export function defaultRound(fixtures, nowUtc) {
   const rounds = roundsFromSeason(fixtures);
   const started = fixtures
-    .filter((f) => f.startTimeLocal <= now || gameState(f.status) !== 'upcoming')
-    .sort((a, b) => b.startTimeLocal.localeCompare(a.startTimeLocal));
+    .filter((f) => startKey(f) <= nowUtc || gameState(f.status) !== 'upcoming')
+    .sort((a, b) => startKey(b).localeCompare(startKey(a)));
   return started.length ? roundKey(started[0]) : rounds[0] ?? null;
 }
 
@@ -199,7 +205,7 @@ export function nextOpponents(fixtures, includes) {
   const out = {};
   const upcoming = fixtures
     .filter((f) => gameState(f.status) !== 'final')
-    .sort((a, b) => a.startTimeLocal.localeCompare(b.startTimeLocal));
+    .sort((a, b) => startKey(a).localeCompare(startKey(b)));
   for (const f of upcoming) {
     const [a, b] = f.competitors;
     if (!a || !b) continue;

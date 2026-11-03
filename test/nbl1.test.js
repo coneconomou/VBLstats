@@ -128,3 +128,20 @@ test('season totals from box scores feed the stats page and scout', () => {
   });
   assert.match(notes.map((n) => n.text).join('\n'), /Last meeting: Hobart Chargers 67–99 Nunawading Spectres, with 15 and 17 fouls/);
 });
+
+test('overtime: NBL1 period 11 becomes OT straight after Q4', () => {
+  // Eltham Wildcats 91–89 Nunawading Spectres (South Men preliminary final, one overtime).
+  const game = gameFromMatch(load('nbl1-match-overtime')[0]);
+  const q = periodScores(game.periods.data);
+  const eltham = game.teams.data.find((t) => t.statistics.points === 91).entityId;
+  assert.deepEqual(q[eltham], [25, 24, 23, 11, 8]);
+  assert.equal(Math.max(...Object.values(q).map((p) => p.length)), 5, 'no empty OT columns');
+  assert.equal(q[eltham].reduce((a, b) => a + b, 0), 91);
+});
+
+test('NBL1 fixtures keep an absolute UTC start for cross-time-zone comparisons', () => {
+  const fx = fixturesFromMatches(matches, sw2026.seasonId);
+  const f = fx.data.find((x) => x.fixtureId === match.id);
+  assert.equal(f.startTimeUTC, '2026-03-27T07:00:00');
+  assert.equal(f.startTimeLocal, '2026-03-27T18:00:00');
+});

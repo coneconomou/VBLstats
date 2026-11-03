@@ -1,6 +1,6 @@
 // Scout report: everything a referee wants to know before a game between two teams.
 // Pure functions over Synergy data (no DOM, no fetch), so the whole report can be built and tested in Node.
-import { lookup, entityLogo, gameState, summariseFixture } from './stats.js';
+import { lookup, entityLogo, gameState, summariseFixture, startKey } from './stats.js';
 
 // null when the stat isn't recorded at all (NBL1 has no fouls drawn / unsportsmanlike), so it shows "–" not 0.
 const per = (total, games) => (total === undefined || total === null ? null : games ? total / games : 0);
@@ -85,11 +85,11 @@ export function meetings(fixtures, includes, idA, idB) {
   const both = fixtures.filter((f) => involves(f, idA) && involves(f, idB));
   const played = both
     .filter((f) => gameState(f.status) === 'final')
-    .sort((x, y) => y.startTimeLocal.localeCompare(x.startTimeLocal))
+    .sort((x, y) => startKey(y).localeCompare(startKey(x)))
     .map((f) => summariseFixture(f, includes));
   const next = both
     .filter((f) => gameState(f.status) !== 'final')
-    .sort((x, y) => x.startTimeLocal.localeCompare(y.startTimeLocal))[0];
+    .sort((x, y) => startKey(x).localeCompare(startKey(y)))[0];
   return { played, next: next ? summariseFixture(next, includes) : null };
 }
 
@@ -97,7 +97,7 @@ export function meetings(fixtures, includes, idA, idB) {
 export function upcomingGames(fixtures, includes, limit = 8) {
   return fixtures
     .filter((f) => gameState(f.status) !== 'final' && f.competitors.length === 2)
-    .sort((x, y) => x.startTimeLocal.localeCompare(y.startTimeLocal))
+    .sort((x, y) => startKey(x).localeCompare(startKey(y)))
     .slice(0, limit)
     .map((f) => summariseFixture(f, includes));
 }
@@ -105,7 +105,7 @@ export function upcomingGames(fixtures, includes, limit = 8) {
 export function recentGames(fixtures, includes, teamId, n = 5) {
   return fixtures
     .filter((f) => involves(f, teamId) && gameState(f.status) === 'final')
-    .sort((x, y) => y.startTimeLocal.localeCompare(x.startTimeLocal))
+    .sort((x, y) => startKey(y).localeCompare(startKey(x)))
     .slice(0, n)
     .map((f) => {
       const me = f.competitors.find((c) => c.entityId === teamId);
@@ -237,7 +237,9 @@ export function refereeNotes({ a, b, comparison, close, streaks, lastMeeting, la
   if (fd && fta) {
     for (const [t, side, rank] of teams) {
       if (top(fd[rank], fd.teams) || top(fta[rank], fta.teams)) {
-        notes.push({ tone: 'info', text: `${t.name} attack contact: they draw ${n1(fd[side])} fouls and shoot ${n1(fta[side])} free throws a game (${ordinal(fta[rank])} for FTA).` });
+        // NBL1 doesn't record fouls drawn (null): say only what we know rather than "0.0 fouls".
+        const drawn = fd[side] === null ? '' : `they draw ${n1(fd[side])} fouls and `;
+        notes.push({ tone: 'info', text: `${t.name} attack contact: ${drawn}${drawn ? '' : 'they '}shoot ${n1(fta[side])} free throws a game (${ordinal(fta[rank])} for FTA).` });
       }
     }
   }

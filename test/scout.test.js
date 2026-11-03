@@ -120,3 +120,14 @@ test('refereeNotes', () => {
   assert.match(text, /Melbourne University have won their last 3 games/);
   assert.doesNotMatch(text, /Camberwell have (won|lost)/, 'Camberwell lost their last game after a win: no streak');
 });
+
+test('referee note never invents "0.0 fouls drawn" when fouls drawn is not recorded (NBL1)', () => {
+  const a = { id: 'A', name: 'Team A' };
+  const b = { id: 'B', name: 'Team B' };
+  const stats = (fta) => ({ games: 10, freeThrowsAttempted: fta, points: 900, pointsAgainst: 900 });
+  // 6 teams so ranks count; A shoots the most free throws. No foulsDrawn anywhere (NBL1).
+  const league = ['A', 'B', 'C', 'D', 'E', 'F'].map((id, i) => ({ entityId: id, statistics: stats(300 - i * 20) }));
+  const notes = refereeNotes({ a, b, comparison: teamComparison(league, 'A', 'B') }).map((n) => n.text).join('\n');
+  assert.match(notes, /Team A attack contact: they shoot 30\.0 free throws a game \(1st for FTA\)/);
+  assert.doesNotMatch(notes, /draw 0\.0 fouls/);
+});

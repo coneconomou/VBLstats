@@ -92,32 +92,39 @@ function showError(err) {
 const staleNotice = (...results) => (results.some((r) => r?.stale)
   ? '<p class="notice">Stats service is busy, showing the last saved results.</p>' : '');
 
+// NBL1 season totals are added up from box scores; say so when some games wouldn't load.
+const incompleteNotice = (inc) => (inc
+  ? `<p class="notice">${inc.missing} of ${inc.total} games couldn't be loaded from NBL1, so these season numbers leave them out. Reload the page to try again.</p>` : '');
+
 const seasonName = () => state.seasons.find((s) => s.seasonId === state.seasonId)?.nameLocal ?? '';
 
 // ---------- Competition + season ----------
 
-async function ensureSeasons() {
+// Returns false if a newer navigation started while the seasons were loading: that navigation owns the
+// season picker now, so this one must not touch it (a slow response for an old competition used to
+// overwrite the picker for the new one).
+async function ensureSeasons(token) {
   const compId = compPicker.value;
-  if (state.seasonsFor === compId) return;
+  const key = `${getLeague()}:${compId}`;
+  if (state.seasonsFor === key) return true;
   const { data } = await getSeasons(compId);
+  if (token !== renderToken) return false;
   state.seasons = [...data].sort((a, b) => (b.startDate ?? '').localeCompare(a.startDate ?? ''));
   state.seasonId = pickCurrentSeason(data)?.seasonId ?? null;
-  state.seasonsFor = compId;
+  state.seasonsFor = key;
   state.statsTeam = 'all';
   // "2026 Championship Men" -> "2026"; older seasons are named inconsistently, so fall back to the full name.
   seasonPicker.innerHTML = state.seasons
     .map((s) => `<option value="${esc(s.seasonId)}">${esc(/^\d{4}\b/.exec(s.nameLocal)?.[0] ?? s.nameLocal)}</option>`).join('');
   seasonPicker.value = state.seasonId ?? '';
   if (!state.seasonId) throw new Error('No seasons found for this competition');
+  return true;
 }
 
 // ---------- Results ----------
 
-// "YYYY-MM-DDTHH:mm:ss" in local time, to compare with Synergy's zone-less startTimeLocal.
-function localNow() {
-  const d = new Date();
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
-}
+// "YYYY-MM-DDTHH:mm:ss" in UTC, to compare with each game's absolute start time.
+const nowUtc = () => new Date().toISOString().slice(0, 19);
 
 async function renderResults(token, requestedRound) {
   const fixtures = await getSeasonFixtures(state.seasonId);
@@ -128,7 +135,7 @@ async function renderResults(token, requestedRound) {
     return;
   }
   // A round from the URL that this season doesn't have (e.g. after switching season) falls back to the default.
-  const round = rounds.includes(requestedRound) ? requestedRound : defaultRound(fixtures.data, localNow());
+  const round = rounds.includes(requestedRound) ? requestedRound : defaultRound(fixtures.data, nowUtc());
   const games = gamesInRound(fixtures.data, fixtures.includes, round);
 
   app.innerHTML = `
@@ -212,6 +219,7 @@ async function renderStats(token) {
   if (!teams.some(([id]) => id === state.statsTeam)) state.statsTeam = 'all';
 
   app.innerHTML = `
+    ${incompleteNotice(res.incomplete)}
     <div class="page-head">
       <h2 class="section-title">${esc(seasonName())} · Player stats</h2>
       <select id="team-filter" aria-label="Team">
@@ -349,6 +357,7 @@ async function scoutSeasonData(seasonId) {
     ladder: standings ? ladderRows(standings.data, standings.includes) : [],
     teamStats: teamStats?.data ?? [],
     players: playerStats ? playerSeasonRows(playerStats.data, playerStats.includes) : [],
+    incomplete: playerStats?.incomplete ?? teamStats?.incomplete ?? null,
   };
 }
 
@@ -419,6 +428,7 @@ async function renderScout(token, [idA, idB] = []) {
 
   app.innerHTML = `
     ${staleNotice(fixtures)}
+    ${incompleteNotice(season.incomplete)}
     <div class="page-head">
       <h2 class="section-title">${esc(seasonName())} · Scout</h2>
       <div class="scout-pickers">
@@ -581,8 +591,7 @@ async function route() {
     if (gameId) {
       await renderGame(gameId, token);
     } else {
-      await ensureSeasons();
-      if (token === renderToken) await PAGES[page](token, param);
+      if (await ensureSeasons(token) && token === renderToken) await PAGES[page](token, param);
     }
   } catch (err) {
     if (token === renderToken) showError(err);

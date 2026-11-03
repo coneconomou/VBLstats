@@ -165,30 +165,50 @@ nbl1.getGame = async (fixtureId) => {
 let onTotalsProgress = null;
 export function setTotalsProgress(fn) { onTotalsProgress = fn; }
 
+// Totals are rebuilt after NBL1_MEMO_MS so newly finished games get counted (rebuilding is quick:
+// finished games come from the local server's disk cache). Incomplete totals are never kept, so the
+// next visit retries the games that failed.
 const totalsMemo = new Map();
+
+async function loadGames(fixtureIds, onDone) {
+  const games = [];
+  const failed = [];
+  let next = 0;
+  // NBL1 takes 2-4 s per uncached game; 10 at a time makes a first full season ~1 min, still gentle on their API.
+  const worker = async () => {
+    while (next < fixtureIds.length) {
+      const id = fixtureIds[next++];
+      try { games.push(await nbl1.getGame(id)); } catch { failed.push(id); }
+      onDone?.();
+    }
+  };
+  await Promise.all(Array.from({ length: 10 }, worker));
+  return { games, failed };
+}
+
 function nbl1Totals(seasonId) {
-  if (!totalsMemo.has(seasonId)) {
-    const promise = (async () => {
-      const fixtures = await nbl1.getSeasonFixtures(seasonId);
-      const done = fixtures.data.filter((f) => f.status === 'CONFIRMED');
-      const games = [];
-      let next = 0;
-      let finished = 0;
-      // NBL1 takes 2-4 s per uncached game; 10 at a time makes a first full season ~1 min, still gentle on their API.
-      const worker = async () => {
-        while (next < done.length) {
-          const f = done[next++];
-          try { games.push(await nbl1.getGame(f.fixtureId)); } catch { /* skip a game that won't load */ }
-          finished += 1;
-          onTotalsProgress?.(finished, done.length);
-        }
-      };
-      await Promise.all(Array.from({ length: 10 }, worker));
-      return seasonTotals(games);
-    })().catch((err) => { totalsMemo.delete(seasonId); throw err; });
-    totalsMemo.set(seasonId, promise);
-  }
-  return totalsMemo.get(seasonId);
+  const hit = totalsMemo.get(seasonId);
+  if (hit && Date.now() - hit.at < NBL1_MEMO_MS) return hit.promise;
+
+  const promise = (async () => {
+    const fixtures = await nbl1.getSeasonFixtures(seasonId);
+    const done = fixtures.data.filter((f) => f.status === 'CONFIRMED').map((f) => f.fixtureId);
+    let finished = 0;
+    const first = await loadGames(done, () => onTotalsProgress?.(++finished, done.length));
+    // One retry for games that failed (usually a momentary hiccup upstream).
+    const retry = first.failed.length ? await loadGames(first.failed) : { games: [], failed: [] };
+    const totals = seasonTotals([...first.games, ...retry.games]);
+    const incomplete = retry.failed.length ? { missing: retry.failed.length, total: done.length } : null;
+    if (incomplete) forget();
+    return {
+      players: { ...totals.players, incomplete },
+      teams: { ...totals.teams, incomplete },
+    };
+  })().catch((err) => { forget(); throw err; });
+  // Only drop our own entry: a newer rebuild may have replaced it in the meantime.
+  const forget = () => { if (totalsMemo.get(seasonId)?.promise === promise) totalsMemo.delete(seasonId); };
+  totalsMemo.set(seasonId, { at: Date.now(), promise });
+  return promise;
 }
 
 nbl1.getSeasonPlayerStats = async (seasonId) => (await nbl1Totals(seasonId)).players;

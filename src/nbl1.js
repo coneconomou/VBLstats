@@ -85,6 +85,7 @@ export function fixturesFromMatches(matches, seasonId) {
       roundNumber: final ? null : String(m.round),
       status: statusOf(m),
       startTimeLocal: utcToLocal(m.start_time, venueTz),
+      startTimeUTC: m.start_time.replace(/Z$/, '').slice(0, 19),
       venueId: m.venue ? extId(m.venue) : null,
       seasonId: m.season.id,
       competitors: [
@@ -205,9 +206,18 @@ export function gameFromMatch(match) {
         },
       };
     });
+  // NBL1 numbers overtime oddly (first OT is period 11, period_type "overtime"), so renumber overtimes
+  // to follow straight on from the last regular period: Q1-Q4 then 5, 6, ... (shown as OT, OT2).
+  const quarters = teamRows.filter((t) => Number(t.period) > 0 && t.period_type !== 'overtime');
+  const lastQuarter = Math.max(0, ...quarters.map((t) => Number(t.period)));
+  const otNumbers = [...new Set(teamRows.filter((t) => t.period_type === 'overtime').map((t) => Number(t.period)))].sort((a, b) => a - b);
   const periods = teamRows
     .filter((t) => Number(t.period) > 0)
-    .map((t) => ({ entityId: extId(t.team), periodId: Number(t.period), statistics: { points: t.points } }));
+    .map((t) => ({
+      entityId: extId(t.team),
+      periodId: t.period_type === 'overtime' ? lastQuarter + otNumbers.indexOf(Number(t.period)) + 1 : Number(t.period),
+      statistics: { points: t.points },
+    }));
 
   return {
     fixture,
