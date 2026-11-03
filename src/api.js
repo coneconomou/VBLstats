@@ -32,24 +32,44 @@ async function fetchRoute(route, params) {
   return { data: json.data, includes: json.includes ?? {} };
 }
 
+// Same TTL as the proxy's own cache: refetching sooner can't return anything newer, and the
+// upstream throttles easily, so switching pages back and forth reuses what we already have.
+const MEMO_MS = 2 * 60 * 1000;
+const memo = new Map();
+
 // Network first, saved copy if the network fails. `stale` tells the UI it's looking at saved data.
-async function synergy(route, params = {}) {
+// `save: false` for big responses that would eat the localStorage quota (and evict saved games).
+async function synergy(route, params = {}, { save = true } = {}) {
   const key = `${route}?${new URLSearchParams(params)}`;
-  try {
-    const result = await fetchRoute(route, params);
-    writeStore(key, result);
-    return result;
-  } catch (err) {
-    const saved = readStore(key);
-    if (saved) return { ...saved, stale: true };
-    throw err;
-  }
+  const hit = memo.get(key);
+  if (hit && Date.now() - hit.at < MEMO_MS) return hit.promise;
+
+  const promise = (async () => {
+    try {
+      const result = await fetchRoute(route, params);
+      if (save) writeStore(key, result);
+      return result;
+    } catch (err) {
+      memo.delete(key); // don't remember failures
+      const saved = save && readStore(key);
+      if (saved) return { ...saved, stale: true };
+      throw err;
+    }
+  })();
+  memo.set(key, { at: Date.now(), promise });
+  return promise;
 }
 
 export const getSeasons = (competitionId) => synergy(`competitions/${competitionId}/seasons`);
 
 export const getSeasonFixtures = (seasonId) =>
   synergy(`seasons/${seasonId}/fixtures`, { limit: '500', include: 'entities,venues,competitions,seasons' });
+
+export const getStandings = (seasonId) =>
+  synergy(`seasons/${seasonId}/standings`, { limit: '200', include: 'entities' });
+
+export const getSeasonPlayerStats = (seasonId) =>
+  synergy(`statistics/for/person/in/seasons/${seasonId}`, { limit: '1000', include: 'persons,entities' }, { save: false });
 
 export async function getGame(fixtureId) {
   // A finished game never changes, so once we have it there's no need to hit the API again.

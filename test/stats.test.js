@@ -26,7 +26,7 @@ test('formatMinutes', () => {
 
 test('pct', () => {
   assert.equal(pct(5, 14), '35.7');
-  assert.equal(pct(1, 2), '50');
+  assert.equal(pct(1, 2), '50.0');
   assert.equal(pct(0, 0), '–');
 });
 
@@ -51,7 +51,7 @@ test('player row matches the official box score', () => {
   // # | MIN | PTS | FGM FGA FG% | 2PM 2PA 2P% | 3PM 3PA 3P% | FTM FTA FT% | OR DR REB | AST STL BLK TO PF | +/- | EFF
   assert.equal(pom.bib, '10');
   assert.equal(pom.starter, true);
-  assert.deepEqual(pom.cells, ['33:17', 16, 5, 14, '35.7', 0, 2, '0', 5, 12, '41.7', 1, 2, '50', 0, 1, 1, 8, 2, 1, 2, 5, -9, 16]);
+  assert.deepEqual(pom.cells, ['33:17', 16, 5, 14, '35.7', 0, 2, '0.0', 5, 12, '41.7', 1, 2, '50.0', 0, 1, 1, 8, 2, 1, 2, 5, -9, 16]);
 });
 
 test('starters listed first, DNPs flagged', () => {
@@ -85,4 +85,63 @@ test('pickCurrentSeason prefers the active season', () => {
   const s = pickCurrentSeason(load('seasons').data);
   assert.equal(s.nameLocal, '2026 Championship Men');
   assert.equal(pickCurrentSeason([{ status: 'COMPLETE', startDate: '2024' }, { status: 'COMPLETE', startDate: '2025' }]).startDate, '2025');
+});
+
+// Ladder + player stats expectations copied from basketballvictoria.com.au/bigv/ladder and /bigv/statistics
+// for Championship Men 2026.
+import { ladderRows, nextOpponents, playerSeasonRows, sortRows, PLAYER_COLUMNS } from '../src/stats.js';
+
+test('ladder matches the official one', () => {
+  const s = load('standings');
+  const rows = ladderRows(s.data, s.includes);
+  assert.equal(rows.length, 11);
+  assert.deepEqual(rows.map((r) => r.name).slice(0, 3), ['Hume City', 'McKinnon', 'Melbourne University']);
+  const hume = rows[0];
+  assert.deepEqual(
+    [hume.position, hume.played, hume.wins, hume.losses, hume.winPct, hume.pointsFor, hume.pointsAgainst, hume.pct.toFixed(2), hume.lastFive],
+    [1, 20, 15, 5, 75, 1950, 1741, '112.00', 'LWWLL'],
+  );
+  assert.equal(rows.at(-1).name, 'Wyndham');
+});
+
+test('nextOpponents only looks at games not yet played', () => {
+  const season = load('season');
+  assert.deepEqual(nextOpponents(season.data, season.includes), {}, 'season is over');
+  const fake = structuredClone(season.data.find((f) => f.fixtureType === 'FINAL'));
+  fake.status = 'SCHEDULED';
+  const next = nextOpponents([fake], season.includes);
+  assert.equal(Object.keys(next).length, 2);
+  assert.ok(Object.values(next).every((n) => n !== 'TBA'));
+});
+
+test('player season stats match the official table', () => {
+  const p = load('season-player-stats');
+  const rows = playerSeasonRows(p.data, p.includes);
+  assert.equal(rows.length, 172);
+  const top = sortRows(rows, 'ppg', 'desc')[0];
+  assert.equal(top.name, 'Lanyc Shuler');
+  assert.equal(top.team, 'Warrandyte');
+  const cell = (label) => {
+    const c = PLAYER_COLUMNS.find((x) => x.label === label);
+    return c.fmt ? c.fmt(top) : top[c.key];
+  };
+  assert.deepEqual(
+    ['GP', 'GS', 'MIN', 'PPG', 'APG', 'FGM', 'FGA', 'FG%', 'FPG', 'FD', 'RPG'].map(cell),
+    [20, 20, '36:40', '29.0', '7.1', 218, 396, '55.1', '1.9', 111, '5.1'],
+  );
+});
+
+test('players with no 3-point attempts show a dash and sort last on 3P%', () => {
+  const p = load('season-player-stats');
+  const rows = playerSeasonRows(p.data, p.includes);
+  const stanley = rows.find((r) => r.name === 'Oliver Stanley');
+  assert.equal(PLAYER_COLUMNS.find((c) => c.label === '3P%').fmt(stanley), '–');
+  const sorted = sortRows(rows, 'thp', 'desc');
+  assert.ok(sorted.indexOf(stanley) > sorted.findIndex((r) => r.thp === 0), 'below players who shot 0%');
+});
+
+test('sortRows: ascending, and name tie-break', () => {
+  const rows = [{ name: 'B', x: 1 }, { name: 'A', x: 1 }, { name: 'C', x: 0 }];
+  assert.deepEqual(sortRows(rows, 'x', 'asc').map((r) => r.name), ['C', 'A', 'B']);
+  assert.deepEqual(sortRows(rows, 'x', 'desc').map((r) => r.name), ['A', 'B', 'C']);
 });

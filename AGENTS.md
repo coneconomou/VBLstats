@@ -1,6 +1,6 @@
 # VBL Stats
 
-Personal web app showing Big V (Basketball Victoria) finals scores and box scores, my way.
+Personal web app showing Big V (Basketball Victoria) finals, box scores, ladder and player stats, my way.
 
 Read `plan.md` first.
 
@@ -10,5 +10,5 @@ Read `plan.md` first.
 - `src/stats.js`: pure data shaping (tested). `src/api.js`: fetching + local fallback cache. `src/app.js`: rendering + hash routing.
 
 ## Working here
-- `npm test` runs `node --test` against saved real API responses in `test/fixtures/` (one CM final, checked against the official box score).
+- `npm test` runs `node --test` against saved real API responses in `test/fixtures/` (CM 2026, checked against the official box score, ladder and stats pages).
 - The API sometimes returns `"data": null` with a 200 when it's busy/throttled, and caches that for ~2 min. Don't hammer it while testing.

@@ -21,10 +21,13 @@ export function formatMinutes(iso) {
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
+// toFixed alone rounds 28.95 down to "28.9" (binary floats), so round first.
+const round1 = (v) => (Math.round(v * 10) / 10).toFixed(1);
+
 export function pct(made, att) {
   if (!att) return '–';
   const v = (made / att) * 100;
-  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+  return round1(v); // always one decimal so columns line up
 }
 
 export function entityLogo(entity) {
@@ -152,4 +155,143 @@ export function boxScore(entityId, personStats, includes, entityStats) {
     team: teamRow,
     totals: entityStats ? statCells(t, { plusMinus: false }) : null,
   };
+}
+
+// ---------- Ladder ----------
+
+export function secondsOf(iso) {
+  const m = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?/.exec(iso ?? '');
+  return m ? Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0) : 0;
+}
+
+// entityId -> name of the opponent in that team's next scheduled or live game.
+export function nextOpponents(fixtures, includes) {
+  const out = {};
+  const upcoming = fixtures
+    .filter((f) => gameState(f.status) !== 'final')
+    .sort((a, b) => a.startTimeLocal.localeCompare(b.startTimeLocal));
+  for (const f of upcoming) {
+    const [a, b] = f.competitors;
+    if (!a || !b) continue;
+    for (const [me, them] of [[a, b], [b, a]]) {
+      out[me.entityId] ??= lookup(includes, 'entities', them.entityId)?.nameFullLocal ?? 'TBA';
+    }
+  }
+  return out;
+}
+
+export function ladderRows(standings, includes, nextOpp = {}) {
+  return standings
+    .filter((s) => s.fixtureType === 'REGULAR' || !s.fixtureType)
+    .map((s) => {
+      const o = s.calculated?.OVERALL ?? {};
+      const entity = lookup(includes, 'entities', s.entityId);
+      return {
+        position: s.position,
+        id: s.entityId,
+        name: entity?.nameFullLocal ?? 'Unknown',
+        logo: entityLogo(entity),
+        played: o.played ?? 0,
+        wins: o.wins ?? 0,
+        losses: o.losses ?? 0,
+        winPct: o.winPercentageDisplay ?? 0,
+        pointsFor: o.scoredFor ?? 0,
+        pointsAgainst: o.scoredAgainst ?? 0,
+        pct: o.percentageDisplay ?? 0,
+        // resultString is oldest -> newest, so the last five are at the end.
+        lastFive: (o.resultString ?? '').slice(-5),
+        next: nextOpp[s.entityId] ?? null,
+      };
+    })
+    .sort((a, b) => (a.position ?? 99) - (b.position ?? 99));
+}
+
+// ---------- Player season stats ----------
+
+const r1 = (v) => (v === null || v === undefined ? '–' : round1(v));
+
+// key: sort key on the row; fmt: how the cell displays. Percentages are recomputed from makes/attempts
+// so "no attempts" shows as "–" instead of a misleading 0.
+export const PLAYER_COLUMNS = [
+  { key: 'gp', label: 'GP', title: 'Games played' },
+  { key: 'gs', label: 'GS', title: 'Games started' },
+  { key: 'mpg', label: 'MIN', title: 'Minutes per game', fmt: (r) => formatMinutes(r.minIso) },
+  { key: 'ppg', label: 'PPG', title: 'Points per game', fmt: (r) => r1(r.ppg) },
+  { key: 'rpg', label: 'RPG', title: 'Rebounds per game', fmt: (r) => r1(r.rpg) },
+  { key: 'orpg', label: 'OR', title: 'Offensive rebounds per game', fmt: (r) => r1(r.orpg) },
+  { key: 'drpg', label: 'DR', title: 'Defensive rebounds per game', fmt: (r) => r1(r.drpg) },
+  { key: 'apg', label: 'APG', title: 'Assists per game', fmt: (r) => r1(r.apg) },
+  { key: 'spg', label: 'SPG', title: 'Steals per game', fmt: (r) => r1(r.spg) },
+  { key: 'bpg', label: 'BPG', title: 'Blocks per game', fmt: (r) => r1(r.bpg) },
+  { key: 'tpg', label: 'TPG', title: 'Turnovers per game', fmt: (r) => r1(r.tpg) },
+  { key: 'fpg', label: 'FPG', title: 'Personal fouls per game', fmt: (r) => r1(r.fpg) },
+  { key: 'fgm', label: 'FGM', title: 'Field goals made (season)' },
+  { key: 'fga', label: 'FGA', title: 'Field goals attempted (season)' },
+  { key: 'fgp', label: 'FG%', title: 'Field goal %', fmt: (r) => pct(r.fgm, r.fga) },
+  { key: 'twm', label: '2PM', title: '2-pointers made (season)' },
+  { key: 'twa', label: '2PA', title: '2-pointers attempted (season)' },
+  { key: 'twp', label: '2P%', title: '2-point %', fmt: (r) => pct(r.twm, r.twa) },
+  { key: 'thm', label: '3PM', title: '3-pointers made (season)' },
+  { key: 'tha', label: '3PA', title: '3-pointers attempted (season)' },
+  { key: 'thp', label: '3P%', title: '3-point %', fmt: (r) => pct(r.thm, r.tha) },
+  { key: 'ftm', label: 'FTM', title: 'Free throws made (season)' },
+  { key: 'fta', label: 'FTA', title: 'Free throws attempted (season)' },
+  { key: 'ftp', label: 'FT%', title: 'Free throw %', fmt: (r) => pct(r.ftm, r.fta) },
+  { key: 'fd', label: 'FD', title: 'Fouls drawn (season)' },
+];
+
+const ratio = (m, a) => (a ? m / a : -1); // -1 sorts "no attempts" below 0%
+
+export function playerSeasonRows(stats, includes) {
+  return stats
+    .filter((p) => (p.statistics?.games ?? 0) > 0)
+    .map((p) => {
+      const s = p.statistics;
+      const team = lookup(includes, 'entities', p.entityId);
+      const row = {
+        id: `${p.personId}:${p.entityId}`,
+        name: lookup(includes, 'persons', p.personId)?.nameFullLocal ?? 'Unknown',
+        teamId: p.entityId,
+        team: team?.nameFullLocal ?? '',
+        logo: entityLogo(team),
+        gp: s.games ?? 0,
+        gs: s.gamesStarted ?? 0,
+        minIso: s.minutesPerGame,
+        mpg: secondsOf(s.minutesPerGame),
+        ppg: s.pointsPerGame ?? 0,
+        rpg: s.reboundsPerGame ?? 0,
+        orpg: s.reboundsOffensivePerGame ?? 0,
+        drpg: s.reboundsDefensivePerGame ?? 0,
+        apg: s.assistsPerGame ?? 0,
+        spg: s.stealsPerGame ?? 0,
+        bpg: s.blocksPerGame ?? 0,
+        tpg: s.turnoversPerGame ?? 0,
+        fpg: s.foulsPersonalPerGame ?? 0,
+        fgm: s.fieldGoalsMade ?? 0,
+        fga: s.fieldGoalsAttempted ?? 0,
+        twm: s.pointsTwoMade ?? 0,
+        twa: s.pointsTwoAttempted ?? 0,
+        thm: s.pointsThreeMade ?? 0,
+        tha: s.pointsThreeAttempted ?? 0,
+        ftm: s.freeThrowsMade ?? 0,
+        fta: s.freeThrowsAttempted ?? 0,
+        fd: s.foulsDrawn ?? 0,
+      };
+      row.fgp = ratio(row.fgm, row.fga);
+      row.twp = ratio(row.twm, row.twa);
+      row.thp = ratio(row.thm, row.tha);
+      row.ftp = ratio(row.ftm, row.fta);
+      return row;
+    });
+}
+
+export function sortRows(rows, key, dir = 'desc') {
+  const sign = dir === 'asc' ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const x = a[key];
+    const y = b[key];
+    const c = typeof x === 'string' ? x.localeCompare(y) : x - y;
+    // Tie-break on name so the order is stable and predictable.
+    return c * sign || a.name.localeCompare(b.name);
+  });
 }

@@ -33,7 +33,15 @@ button, select {
   border-bottom: 1px solid var(--line);
 }
 .brand { font-family: var(--display); font-size: 20px; letter-spacing: .5px; }
+.tabs { display: flex; gap: 4px; margin-right: auto; }
+.tabs a { padding: 6px 12px; border-radius: 8px; color: var(--muted); font-weight: 500; }
+.tabs a:hover { color: var(--text); }
+.tabs a.active { color: var(--text); background: var(--panel-2); }
+.pickers { display: flex; gap: 8px; }
+.pickers[hidden] { display: none; }
 main { max-width: 1400px; margin: 0 auto; padding: 16px; }
+.page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 8px 0 16px; }
+.page-head .section-title { margin: 0; }
 
 /* ---------- Finals list ---------- */
 .section-title { font-family: var(--display); font-weight: 500; font-size: 22px; margin: 8px 0 16px; }
@@ -91,21 +99,38 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 .box h3 { display: flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 500; font-size: 20px; margin: 0 0 8px; }
 .tiny-logo { width: 28px; height: 28px; object-fit: contain; }
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
-.boxscore { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.boxscore th, .boxscore td { padding: 7px 8px; text-align: right; }
-.boxscore th {
+:is(.boxscore, .data) { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; white-space: nowrap; }
+:is(.boxscore, .data) th, :is(.boxscore, .data) td { padding: 7px 8px; text-align: right; }
+:is(.boxscore, .data) th {
   position: sticky; top: 0; background: var(--panel-2); color: var(--muted);
   font-size: 11px; font-weight: 600; letter-spacing: .4px; cursor: help;
 }
-.boxscore tbody tr { border-top: 1px solid var(--line); }
-.boxscore tbody tr:nth-child(even) { background: rgba(255, 255, 255, .02); }
-.boxscore tbody tr:hover { background: rgba(255, 138, 61, .08); }
+:is(.boxscore, .data) tbody tr { border-top: 1px solid var(--line); }
+:is(.boxscore, .data) tbody tr:nth-child(even) { background: rgba(255, 255, 255, .02); }
+:is(.boxscore, .data) tbody tr:hover { background: rgba(255, 138, 61, .08); }
 /* Keep # and name visible while scrolling the wide table sideways on small screens. */
-.boxscore .num, .boxscore .name { text-align: left; position: sticky; background: var(--panel); }
-.boxscore th.num, .boxscore th.name { background: var(--panel-2); z-index: 1; }
-.boxscore .num { left: 0; width: 36px; min-width: 36px; color: var(--muted); }
-.boxscore .name { left: 36px; font-weight: 500; border-right: 1px solid var(--line); }
+:is(.boxscore, .data) .num, :is(.boxscore, .data) .name { text-align: left; position: sticky; background: var(--panel); }
+:is(.boxscore, .data) th.num, :is(.boxscore, .data) th.name { background: var(--panel-2); z-index: 1; }
+:is(.boxscore, .data) .num { left: 0; width: 36px; min-width: 36px; color: var(--muted); }
+:is(.boxscore, .data) .name { left: 36px; font-weight: 500; border-right: 1px solid var(--line); }
 .boxscore td:nth-child(4) { font-weight: 600; color: var(--accent); } /* PTS */
+/* Ladder + player stats */
+.data th.left, .data td.left { text-align: left; }
+.data td.strong { font-weight: 600; }
+.data .name { min-width: 170px; }
+.team-cell { display: flex; align-items: center; gap: 10px; }
+.team-cell .tiny-logo { width: 24px; height: 24px; flex: none; }
+.sub { display: block; font-size: 11px; color: var(--muted); font-weight: 400; }
+.form {
+  display: inline-grid; place-items: center; width: 20px; height: 20px; margin-right: 3px;
+  border-radius: 4px; font-size: 11px; font-weight: 600; background: var(--panel-2); color: var(--muted);
+}
+.form.w { background: rgba(70, 190, 120, .18); color: #5fd496; }
+.form.l { background: rgba(255, 77, 77, .15); color: #ff7a7a; }
+.data th.sortable { cursor: pointer; user-select: none; }
+.data th.sortable:hover, .data th.sorted { color: var(--text); }
+.data td.sorted { color: var(--accent); font-weight: 600; }
+
 .star { color: var(--accent); font-size: 8px; margin-left: 6px; vertical-align: middle; }
 .dnp td { color: var(--muted); }
 .dnp-cell { text-align: left !important; font-size: 12px; }
@@ -117,6 +142,10 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 .notice { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; color: var(--muted); font-size: 13px; }
 
 @media (max-width: 700px) {
+  .top { flex-wrap: wrap; }
+  .tabs { margin-right: 0; }
+  .pickers { width: 100%; }
+  .pickers select { flex: 1; min-width: 0; }
   /* minmax(0, …) lets the team columns shrink below their content so long names wrap instead of overflowing. */
   .score-row { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; }
   .side, .side.home { flex-direction: column; gap: 6px; min-width: 0; }
