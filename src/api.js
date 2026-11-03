@@ -5,7 +5,8 @@
 // Gotcha: when the upstream is busy it answers 200 with `"data": null` (and caches that for ~2 min),
 // so every successful response is also saved locally and used as a fallback.
 //
-// NBL1: comes from NBL1's own "rosetta" API through our local server (serve.js /nbl1-api), then
+// NBL1: comes from NBL1's own "rosetta" API through our local server (serve.js /nbl1-api), or on the
+// GitHub Pages site through the same thing as a Cloudflare Worker (worker/nbl1-proxy.js), then
 // src/nbl1.js reshapes it to look like the Synergy data above.
 import { cleanFixtures } from './stats.js';
 import {
@@ -106,13 +107,17 @@ bigv.getGame = async (fixtureId) => {
 
 // ---------- NBL1 ----------
 
+// Hosted online there's no local server, so use the Worker (its address is printed by npm run deploy-worker).
+const NBL1_WORKER = 'https://vblstats-nbl1.vblstats.workers.dev';
+const NBL1_BASE = globalThis.location?.hostname.endsWith('github.io') ? `${NBL1_WORKER}/nbl1-api/` : '/nbl1-api/';
+
 const nbl1Memo = new Map();
 const NBL1_MEMO_MS = 5 * 60 * 1000;
 
 function rosetta(path) {
   const hit = nbl1Memo.get(path);
   if (hit && Date.now() - hit.at < NBL1_MEMO_MS) return hit.promise;
-  const promise = fetch(`/nbl1-api/${path}`)
+  const promise = fetch(NBL1_BASE + path)
     .then(async (res) => {
       if (!res.ok) {
         // 404 here means the page was opened without the app's local server (e.g. a static host).

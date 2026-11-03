@@ -5,6 +5,7 @@
   "scripts": {
     "start": "node serve.js",
     "test": "node --test",
-    "install-app": "node app/install.js"
+    "install-app": "node app/install.js",
+    "deploy-worker": "npx --yes wrangler@4.151.2 deploy"
   }
 }

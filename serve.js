@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { ROSETTA, ROSETTA_HEADERS, MEMO_MS, isAllowed, slimMatch, isValidResponse, isFinishedMatch } from './src/rosetta.js';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png' };
@@ -21,28 +22,7 @@ function staticFile(path) {
 }
 
 // ---------- NBL1 proxy ----------
-// NBL1's stats API only answers requests that say they come from nbl1.com.au (browsers block it from
-// anywhere else), so the app asks this server, which adds that origin. Agreed with the owner as a
-// workaround; it may break if NBL1 changes their API.
-const ROSETTA = 'https://prod.rosetta.nbl.com.au/get/';
-const ROSETTA_HEADERS = { Origin: 'https://www.nbl1.com.au', Referer: 'https://www.nbl1.com.au/', 'User-Agent': 'Mozilla/5.0' };
-// The exact endpoints the app uses, matched whole, so "../" tricks can't reach anything else.
-const ALLOWED = [
-  /^nbl1\/seasons$/,
-  /^nbl1\/matches\/in\/season\/\d{4}\/regular\/[a-z]+$/,
-  /^nbl1\/standings\/\d{4}\/regular$/,
-  /^match\/[0-9a-f-]{36}\/live\/all$/,
-];
-const MEMO_MS = 5 * 60 * 1000; // matches the API's own cache time
-
-// A full match is ~1 MB, almost all play-by-play and video data the app never uses.
-function slimMatch(json) {
-  const drop = ['play_by_play', 'match_video', 'calculated_player_statistics', 'calculated_team_statistics', 'betting', 'odds'];
-  for (const m of json.data ?? []) for (const k of drop) delete m[k];
-  return json;
-}
-
-const isValidResponse = (json) => json && Array.isArray(json.data);
+// The app asks this server for NBL1 data, which passes it on with an nbl1.com.au origin (src/rosetta.js).
 
 export function createApp({ fetchImpl = fetch, cacheDir = join(root, '.cache', 'nbl1-matches') } = {}) {
   const memo = new Map();
@@ -74,7 +54,7 @@ export function createApp({ fetchImpl = fetch, cacheDir = join(root, '.cache', '
     if (isMatch) json = slimMatch(json);
     const body = JSON.stringify(json);
     memo.set(key, { at: Date.now(), body });
-    if (file && json.data[0]?.match_status === 'complete') {
+    if (file && isFinishedMatch(path, json)) {
       // Write to a temp file then rename, so a crash mid-write never leaves a broken cache file.
       await mkdir(cacheDir, { recursive: true });
       const tmp = `${file}.${process.pid}.tmp`;
@@ -104,7 +84,7 @@ export function createApp({ fetchImpl = fetch, cacheDir = join(root, '.cache', '
 
     if (path.startsWith('/nbl1-api/')) {
       const apiPath = path.slice('/nbl1-api/'.length);
-      if (!ALLOWED.some((re) => re.test(apiPath))) { res.writeHead(403).end('Not allowed'); return; }
+      if (!isAllowed(apiPath)) { res.writeHead(403).end('Not allowed'); return; }
       try {
         const body = await rosetta(apiPath, search);
         res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(body);

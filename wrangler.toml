@@ -1,0 +1,3 @@
+name = "vblstats-nbl1"
+main = "worker/nbl1-proxy.js"
+compatibility_date = "2026-10-01"
