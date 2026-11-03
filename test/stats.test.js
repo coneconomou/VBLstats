@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  formatMinutes, pct, summariseFixture, roundsFromSeason, gamesInRound, defaultRound, roundLabel, pickCurrentSeason, periodScores, boxScore, COLUMNS,
+  formatMinutes, pct, summariseFixture, cleanFixtures, roundsFromSeason, gamesInRound, defaultRound, roundLabel, pickCurrentSeason, periodScores, boxScore, COLUMNS,
 } from '../src/stats.js';
 
 const load = (n) => JSON.parse(readFileSync(new URL(`./fixtures/${n}.json`, import.meta.url)));
@@ -164,4 +164,13 @@ test('sortRows: ascending, and name tie-break', () => {
   const rows = [{ name: 'B', x: 1 }, { name: 'A', x: 1 }, { name: 'C', x: 0 }];
   assert.deepEqual(sortRows(rows, 'x', 'asc').map((r) => r.name), ['C', 'A', 'B']);
   assert.deepEqual(sortRows(rows, 'x', 'desc').map((r) => r.name), ['A', 'B', 'C']);
+});
+
+test('cleanFixtures drops placeholder games (Championship Women 2026 had a TBA final)', () => {
+  const season = load('season');
+  // Shape copied from the real CW placeholder: FINAL, no round, no teams, no start time.
+  const placeholder = { fixtureId: 'x', fixtureType: 'FINAL', roundNumber: null, status: 'SCHEDULED', startTimeLocal: null, competitors: [] };
+  const cleaned = cleanFixtures([...season.data, placeholder]);
+  assert.equal(cleaned.length, season.data.length);
+  assert.equal(gamesInRound(cleaned, season.includes, 'finals').length, 5);
 });

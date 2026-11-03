@@ -2,6 +2,8 @@
 // It's public, sends CORS `*`, and caches ~2 minutes, so we can call it straight from the browser.
 // Gotcha: when the upstream is busy it answers 200 with `"data": null` (and caches that for ~2 min),
 // so every successful response is also saved locally and used as a fallback.
+import { cleanFixtures } from './stats.js';
+
 const BASE = 'https://prod.services.nbl.com.au/api_cache/bbv/synergy';
 const STORE_PREFIX = 'vblstats.api.';
 
@@ -63,7 +65,8 @@ async function synergy(route, params = {}, { save = true } = {}) {
 export const getSeasons = (competitionId) => synergy(`competitions/${competitionId}/seasons`);
 
 export const getSeasonFixtures = (seasonId) =>
-  synergy(`seasons/${seasonId}/fixtures`, { limit: '500', include: 'entities,venues,competitions,seasons' });
+  synergy(`seasons/${seasonId}/fixtures`, { limit: '500', include: 'entities,venues,competitions,seasons' })
+    .then((r) => ({ ...r, data: cleanFixtures(r.data) }));
 
 export const getStandings = (seasonId) =>
   synergy(`seasons/${seasonId}/standings`, { limit: '200', include: 'entities' });

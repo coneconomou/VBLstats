@@ -72,6 +72,12 @@ export function summariseFixture(fixture, includes) {
   };
 }
 
+// Synergy keeps placeholder fixtures (e.g. a "TBA" grand final with no teams and no start time, seen in
+// Championship Women 2026). They can't be shown or compared, so drop them right after loading.
+export function cleanFixtures(fixtures) {
+  return fixtures.filter((f) => f.competitors?.length === 2 && f.startTimeLocal);
+}
+
 // ---------- Rounds ----------
 // Like the BV fixtures page: numbered rounds for the regular season, and every final grouped
 // under one "Finals" tab (finals can span several round numbers depending on the competition).
