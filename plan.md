@@ -23,4 +23,5 @@ Show Big V stats the way I like: results by round (each game with final score, q
 - **Decided:** Game times are compared/sorted by absolute UTC start (venue local time only for display), so NBL1's cross-time-zone conferences order correctly.
 - **Open:** Captain "(C)" marker: not in the Synergy data we fetch, so it's left out.
 - **Decided:** Runs as a desktop app via a shortcut (no install, no Electron): Edge app window + hidden local server, basketball icon (`app/icon.ico`). The app's browser profile has sync/implicit sign-in turned off.
+- **Decided:** macOS support for the friend handover: `npm run install-app` builds a script-based `.app` (no signing needed since it's built locally). Only the launcher logic was tested (simulated on Windows); not yet run on a real Mac.
 - **Open:** Hosting it online for phone use. Big V would work on any static host; NBL1 needs the serve.js proxy, so it would need a small server (or NBL1 left out online).
