@@ -21,4 +21,4 @@ Show Big V stats the way I like: results by round (each game with final score, q
 - **Decided:** NBL1 season stats are summed from box scores (no full endpoint). NBL1 doesn't record fouls drawn, unsportsmanlike fouls, team rebounds or coach fouls: those show "–" or are hidden (FD column, Team/Coach row, "Draws fouls" leaders).
 - **Open:** Captain "(C)" marker: not in the Synergy data we fetch, so it's left out.
 - **Decided:** Runs as a desktop app via a shortcut (no install, no Electron): Edge app window + hidden local server, basketball icon (`app/icon.ico`). The app's browser profile has sync/implicit sign-in turned off.
-- **Open:** Hosting it online (any static host works), which would also make it usable on a phone.
+- **Open:** Hosting it online for phone use. Big V would work on any static host; NBL1 needs the serve.js proxy, so it would need a small server (or NBL1 left out online).
