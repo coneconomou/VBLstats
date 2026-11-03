@@ -64,7 +64,7 @@ export function summariseFixture(fixture, includes) {
     start: fixture.startTimeLocal,
     state: gameState(fixture.status),
     type: fixture.fixtureType,
-    round: fixture.roundNumber,
+    round: roundKey(fixture),
     venue: venue?.nameLocal ?? '',
     competition: competition?.nameLocal ?? '',
     season: season?.nameLocal ?? '',
@@ -72,12 +72,35 @@ export function summariseFixture(fixture, includes) {
   };
 }
 
-// Finals newest first; ties keep a stable order by start time then id.
-export function finalsFromSeason(fixtures, includes) {
+// ---------- Rounds ----------
+// Like the BV fixtures page: numbered rounds for the regular season, and every final grouped
+// under one "Finals" tab (finals can span several round numbers depending on the competition).
+
+export const roundKey = (f) => (f.fixtureType === 'FINAL' ? 'finals' : String(f.roundNumber ?? ''));
+
+export const roundLabel = (key) => (key === 'finals' ? 'Finals' : `Round ${key}`);
+
+export function roundsFromSeason(fixtures) {
+  const keys = [...new Set(fixtures.map(roundKey))].filter(Boolean);
+  // Finals last, numbered rounds in numeric (not string) order.
+  return keys.sort((a, b) => (a === 'finals') - (b === 'finals') || Number(a) - Number(b));
+}
+
+export function gamesInRound(fixtures, includes, key) {
   return fixtures
-    .filter((f) => f.fixtureType === 'FINAL')
+    .filter((f) => roundKey(f) === key)
     .map((f) => summariseFixture(f, includes))
-    .sort((a, b) => b.start.localeCompare(a.start) || a.id.localeCompare(b.id));
+    .sort((a, b) => a.start.localeCompare(b.start) || a.id.localeCompare(b.id));
+}
+
+// The round of the most recent game that has started; before the season starts, the first round.
+// `now` is a local "YYYY-MM-DDTHH:mm:ss" string so it compares directly with startTimeLocal.
+export function defaultRound(fixtures, now) {
+  const rounds = roundsFromSeason(fixtures);
+  const started = fixtures
+    .filter((f) => f.startTimeLocal <= now || gameState(f.status) !== 'upcoming')
+    .sort((a, b) => b.startTimeLocal.localeCompare(a.startTimeLocal));
+  return started.length ? roundKey(started[0]) : rounds[0] ?? null;
 }
 
 export function pickCurrentSeason(seasons) {

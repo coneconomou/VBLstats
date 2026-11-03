@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  formatMinutes, pct, summariseFixture, finalsFromSeason, pickCurrentSeason, periodScores, boxScore, COLUMNS,
+  formatMinutes, pct, summariseFixture, roundsFromSeason, gamesInRound, defaultRound, roundLabel, pickCurrentSeason, periodScores, boxScore, COLUMNS,
 } from '../src/stats.js';
 
 const load = (n) => JSON.parse(readFileSync(new URL(`./fixtures/${n}.json`, import.meta.url)));
@@ -71,14 +71,34 @@ test('team/coach and totals rows', () => {
   assert.deepEqual(box.totals, ['200:00', 100, 40, 93, '43.0', 28, 52, '53.8', 12, 41, '29.3', 8, 11, '72.7', 17, 29, 46, 26, 6, 3, 10, 28, '', 115]);
 });
 
-test('finals list for the season', () => {
+test('rounds: 1..18 in numeric order, then Finals', () => {
   const season = load('season');
-  const finals = finalsFromSeason(season.data, season.includes);
+  const rounds = roundsFromSeason(season.data);
+  assert.deepEqual(rounds, [...Array.from({ length: 18 }, (_, i) => String(i + 1)), 'finals']);
+  assert.equal(roundLabel('finals'), 'Finals');
+  assert.equal(roundLabel('7'), 'Round 7');
+});
+
+test('games in a round: finals grouped, oldest first, names resolved', () => {
+  const season = load('season');
+  const finals = gamesInRound(season.data, season.includes, 'finals');
   assert.equal(finals.length, 5);
-  assert.ok(finals.every((f) => f.type === 'FINAL'));
+  assert.ok(finals.every((f) => f.type === 'FINAL' && f.round === 'finals'));
   assert.ok(finals.every((f) => f.teams.every((t) => t.name !== 'TBA')), 'team names resolved');
-  assert.ok(finals[0].start >= finals.at(-1).start, 'newest first');
+  assert.ok(finals[0].start <= finals.at(-1).start, 'oldest first');
   assert.ok(finals.some((f) => f.id === fixture.data[0].fixtureId));
+  const r14 = gamesInRound(season.data, season.includes, '14');
+  assert.equal(r14.length, 4);
+  assert.ok(r14.every((g) => g.round === '14'));
+});
+
+test('defaultRound picks the latest round that has started', () => {
+  const { data } = load('season');
+  assert.equal(defaultRound(data, '2026-11-03T12:00:00'), 'finals', 'season over');
+  const unplayed = data.map((f) => ({ ...f, status: 'SCHEDULED' }));
+  assert.equal(defaultRound(unplayed, '2000-01-01T00:00:00'), '1', 'before the season');
+  const r5 = data.filter((f) => f.roundNumber === '5').map((f) => f.startTimeLocal).sort().at(-1);
+  assert.equal(defaultRound(unplayed, r5), '5', 'mid-season');
 });
 
 test('pickCurrentSeason prefers the active season', () => {

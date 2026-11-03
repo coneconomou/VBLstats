@@ -45,6 +45,14 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 
 /* ---------- Finals list ---------- */
 .section-title { font-family: var(--display); font-weight: 500; font-size: 22px; margin: 8px 0 16px; }
+/* One row of round tabs; scrolls sideways when there are more rounds than fit. */
+.rounds { position: relative; display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin: -4px 0 16px; scrollbar-width: thin; }
+.rounds a {
+  flex: none; min-width: 36px; padding: 6px 10px; text-align: center; border-radius: 8px;
+  background: var(--panel); border: 1px solid var(--line); color: var(--muted); font-weight: 500;
+}
+.rounds a:hover { color: var(--text); border-color: var(--muted); }
+.rounds a.active { background: var(--accent); border-color: var(--accent); color: #111; }
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
 .card {
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px;

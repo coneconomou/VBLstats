@@ -2,7 +2,7 @@ import {
   getSeasons, getSeasonFixtures, getGame, getStandings, getSeasonPlayerStats,
 } from './api.js';
 import {
-  summariseFixture, finalsFromSeason, pickCurrentSeason, periodScores, boxScore, COLUMNS,
+  summariseFixture, roundsFromSeason, gamesInRound, defaultRound, roundLabel, pickCurrentSeason, periodScores, boxScore, COLUMNS,
   nextOpponents, ladderRows, playerSeasonRows, sortRows, PLAYER_COLUMNS,
 } from './stats.js';
 
@@ -94,17 +94,38 @@ async function ensureSeasons() {
   if (!state.seasonId) throw new Error('No seasons found for this competition');
 }
 
-// ---------- Finals list ----------
+// ---------- Results ----------
 
-async function renderFinals(token) {
+// "YYYY-MM-DDTHH:mm:ss" in local time, to compare with Synergy's zone-less startTimeLocal.
+function localNow() {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
+}
+
+async function renderResults(token, requestedRound) {
   const fixtures = await getSeasonFixtures(state.seasonId);
   if (token !== renderToken) return;
-  const finals = finalsFromSeason(fixtures.data, fixtures.includes);
+  const rounds = roundsFromSeason(fixtures.data);
+  if (!rounds.length) {
+    app.innerHTML = `<h2 class="section-title">${esc(seasonName())} · Results</h2><p class="muted center">No games scheduled yet.</p>`;
+    return;
+  }
+  // A round from the URL that this season doesn't have (e.g. after switching season) falls back to the default.
+  const round = rounds.includes(requestedRound) ? requestedRound : defaultRound(fixtures.data, localNow());
+  const games = gamesInRound(fixtures.data, fixtures.includes, round);
+
   app.innerHTML = `
     ${staleNotice(fixtures)}
-    <h2 class="section-title">${esc(seasonName())} · Finals</h2>
-    ${finals.length ? `<div class="cards">${finals.map(card).join('')}</div>`
-      : '<p class="muted center">No finals scheduled yet.</p>'}`;
+    <h2 class="section-title">${esc(seasonName())} · ${esc(roundLabel(round))}</h2>
+    <nav class="rounds" aria-label="Round">
+      ${rounds.map((r) => `<a href="#/results/${r}" class="${r === round ? 'active' : ''}">${r === 'finals' ? 'Finals' : esc(r)}</a>`).join('')}
+    </nav>
+    ${games.length ? `<div class="cards">${games.map(card).join('')}</div>`
+      : '<p class="muted center">No games in this round.</p>'}`;
+  // Centre the active round in the strip. Not scrollIntoView: that can also scroll the whole page sideways.
+  const strip = app.querySelector('.rounds');
+  const active = strip.querySelector('a.active');
+  strip.scrollLeft = active.offsetLeft - strip.clientWidth / 2 + active.offsetWidth / 2;
 }
 
 function card(g) {
@@ -243,9 +264,9 @@ async function renderGame(id, token) {
 
   const won = (t, o) => (game.state === 'final' && t.score > o.score ? 'won' : '');
   app.innerHTML = `
-    <a class="back" href="#/">← Finals</a>
+    <a class="back" href="#/results/${esc(game.round)}">← ${esc(roundLabel(game.round))}</a>
     <section class="scoreboard">
-      <p class="muted small">${esc(game.season || game.competition)}${game.type === 'FINAL' ? ' · Finals' : ''}</p>
+      <p class="muted small">${esc(game.season || game.competition)} · ${esc(roundLabel(game.round))}</p>
       <div class="score-row">
         <div class="side home">${logo(home, 'big-logo')}<span class="team-name">${esc(home.name)}</span></div>
         <div class="score">
@@ -283,18 +304,19 @@ function teamBox(team, people, teams) {
 
 // ---------- Routing ----------
 
-const PAGES = { finals: renderFinals, ladder: renderLadder, stats: renderStats };
+const PAGES = { results: renderResults, ladder: renderLadder, stats: renderStats };
 
 function currentPage() {
   if (location.hash.startsWith('#/ladder')) return 'ladder';
   if (location.hash.startsWith('#/stats')) return 'stats';
-  return 'finals';
+  return 'results';
 }
 
 async function route() {
   const token = ++renderToken;
   const gameId = /^#\/game\/([\w-]+)/.exec(location.hash)?.[1];
   const page = gameId ? null : currentPage();
+  const round = /^#\/results\/([\w-]+)/.exec(location.hash)?.[1];
   document.querySelectorAll('.tabs a').forEach((a) => a.classList.toggle('active', a.dataset.page === page));
   pickers.hidden = Boolean(gameId);
   window.scrollTo(0, 0);
@@ -304,7 +326,7 @@ async function route() {
       await renderGame(gameId, token);
     } else {
       await ensureSeasons();
-      if (token === renderToken) await PAGES[page](token);
+      if (token === renderToken) await PAGES[page](token, round);
     }
   } catch (err) {
     if (token === renderToken) showError(err);
@@ -313,14 +335,19 @@ async function route() {
 
 compPicker.innerHTML = COMPETITIONS.map(([id, name]) => `<option value="${id}">${esc(name)}</option>`).join('');
 compPicker.value = COMPETITIONS.some(([id]) => id === storedCompetition()) ? storedCompetition() : COMPETITIONS[0][0];
+// A new competition/season has different rounds, so drop the round from the URL and show its default.
+function rerouteForNewSeason() {
+  if (currentPage() === 'results' && location.hash !== '#/results') location.hash = '#/results'; // hashchange routes
+  else route();
+}
 compPicker.addEventListener('change', () => {
   try { localStorage.setItem(COMP_KEY, compPicker.value); } catch { /* private mode etc. */ }
-  route();
+  rerouteForNewSeason();
 });
 seasonPicker.addEventListener('change', () => {
   state.seasonId = seasonPicker.value;
   state.statsTeam = 'all';
-  route();
+  rerouteForNewSeason();
 });
 window.addEventListener('hashchange', route);
 route();
