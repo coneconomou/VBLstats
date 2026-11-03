@@ -1,10 +1,14 @@
 import {
-  getSeasons, getSeasonFixtures, getGame, getStandings, getSeasonPlayerStats,
+  getSeasons, getSeasonFixtures, getGame, getStandings, getSeasonPlayerStats, getTeamSeasonStats,
 } from './api.js';
 import {
   summariseFixture, roundsFromSeason, gamesInRound, defaultRound, roundLabel, pickCurrentSeason, periodScores, boxScore, COLUMNS,
   nextOpponents, ladderRows, playerSeasonRows, sortRows, PLAYER_COLUMNS,
 } from './stats.js';
+import {
+  teamList, meetings, upcomingGames, recentGames, closeGames, teamComparison, teamLeaders, LEADER_CATEGORIES,
+  matchupBreakdown, refereeNotes, ordinal, currentStreak,
+} from './scout.js';
 
 // Big V competitions in Synergy. IDs are stable across seasons; seasons are looked up live.
 const COMPETITIONS = [
@@ -302,13 +306,247 @@ function teamBox(team, people, teams) {
     </section>`;
 }
 
+// ---------- Scout ----------
+
+const f1 = (v) => (v === null || v === undefined ? '–' : (Math.round(v * 10) / 10).toFixed(1));
+const metricVal = (m, v) => (v === null || v === undefined ? '–' : f1(v));
+// Counts from a single game read better as "100" than "100.0"; percentages keep their decimal.
+const gameVal = (v) => (v === null || v === undefined ? '–' : Number.isInteger(v) ? String(v) : f1(v));
+
+function formPills(s) {
+  return [...(s ?? '')].map((c) => `<span class="form ${c === 'W' ? 'w' : c === 'L' ? 'l' : ''}">${esc(c)}</span>`).join('');
+}
+
+function shortDate(local) {
+  return new Date(local).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
+}
+
+// Loads one season's worth of scouting data. Player stats are the big one; if they fail we still show the rest.
+async function scoutSeasonData(seasonId) {
+  const [fixtures, standings, teamStats, playerStats] = await Promise.all([
+    getSeasonFixtures(seasonId),
+    getStandings(seasonId).catch(() => null),
+    getTeamSeasonStats(seasonId).catch(() => null),
+    getSeasonPlayerStats(seasonId).catch(() => null),
+  ]);
+  return {
+    fixtures,
+    ladder: standings ? ladderRows(standings.data, standings.includes) : [],
+    teamStats: teamStats?.data ?? [],
+    players: playerStats ? playerSeasonRows(playerStats.data, playerStats.includes) : [],
+  };
+}
+
+async function renderScout(token, [idA, idB] = []) {
+  const season = await scoutSeasonData(state.seasonId);
+  if (token !== renderToken) return;
+  const { fixtures } = season;
+  const teams = teamList(fixtures.data, fixtures.includes);
+  if (teams.length < 2) {
+    app.innerHTML = `<h2 class="section-title">${esc(seasonName())} · Scout</h2><p class="muted center">Not enough teams in this season yet.</p>`;
+    return;
+  }
+  const upcoming = upcomingGames(fixtures.data, fixtures.includes);
+  const valid = (id) => teams.some((t) => t.id === id);
+  if (!valid(idA) || !valid(idB) || idA === idB) {
+    // Default to the next scheduled game, else the top two on the ladder.
+    const pick = upcoming[0]?.teams.map((t) => t.id) ?? season.ladder.slice(0, 2).map((r) => r.id);
+    [idA, idB] = pick.length === 2 ? pick : [teams[0].id, teams[1].id];
+  }
+  const a = teams.find((t) => t.id === idA);
+  const b = teams.find((t) => t.id === idB);
+
+  // Head-to-head: this season first; if they haven't met yet, the previous season.
+  let h2h = meetings(fixtures.data, fixtures.includes, idA, idB);
+  let h2hSeason = { ...season, id: state.seasonId, name: seasonName() };
+  if (!h2h.played.length) {
+    const idx = state.seasons.findIndex((s) => s.seasonId === state.seasonId);
+    const prev = state.seasons[idx + 1];
+    if (prev) {
+      try {
+        const prevData = await scoutSeasonData(prev.seasonId);
+        const prevMeet = meetings(prevData.fixtures.data, prevData.fixtures.includes, idA, idB);
+        if (prevMeet.played.length) {
+          h2h = { played: prevMeet.played, next: h2h.next };
+          h2hSeason = { ...prevData, id: prev.seasonId, name: prev.nameLocal };
+        }
+      } catch { /* no previous-season head-to-head, fine */ }
+    }
+  }
+  const lastMeeting = h2h.played[0] ?? null;
+  const lastGame = lastMeeting ? await getGame(lastMeeting.id).catch(() => null) : null;
+  if (token !== renderToken) return;
+
+  const ladderBy = Object.fromEntries(season.ladder.map((r) => [r.id, r]));
+  const comparison = teamComparison(season.teamStats, idA, idB);
+  const leadersA = teamLeaders(season.players, idA);
+  const leadersB = teamLeaders(season.players, idB);
+  const close = { [idA]: closeGames(fixtures.data, idA), [idB]: closeGames(fixtures.data, idB) };
+  const streaks = { [idA]: currentStreak(fixtures.data, fixtures.includes, idA), [idB]: currentStreak(fixtures.data, fixtures.includes, idB) };
+  const notes = refereeNotes({ a, b, comparison, close, streaks, lastMeeting, lastGame, leadersA, leadersB });
+  const breakdown = lastGame ? matchupBreakdown(lastGame, h2hSeason.teamStats, h2hSeason.players) : null;
+
+  const option = (t, sel) => `<option value="${esc(t.id)}" ${t.id === sel ? 'selected' : ''}>${esc(t.name)}</option>`;
+  const teamHead = (t) => {
+    const l = ladderBy[t.id];
+    const form = recentGames(fixtures.data, fixtures.includes, t.id).map((g) => (g.won ? 'W' : 'L')).reverse().join('');
+    return `
+      <div class="scout-team">
+        ${logo(t, 'scout-logo')}
+        <div class="scout-team-name">${esc(t.name)}</div>
+        ${l ? `<div class="muted small">${ordinal(l.position)} on ladder · ${l.wins}–${l.losses}</div>` : ''}
+        ${form ? `<div title="Last 5 games incl. finals, oldest to newest">${formPills(form)}</div>` : ''}
+      </div>`;
+  };
+  const nextInfo = h2h.next
+    ? `<div class="small">Next meeting</div><div>${esc(formatDate(h2h.next.start))}</div><div class="muted small">${esc(h2h.next.venue)} · ${esc(roundLabel(h2h.next.round))}</div>`
+    : '<div class="muted small">No upcoming game between these teams</div>';
+
+  app.innerHTML = `
+    ${staleNotice(fixtures)}
+    <div class="page-head">
+      <h2 class="section-title">${esc(seasonName())} · Scout</h2>
+      <div class="scout-pickers">
+        <select id="scout-a" aria-label="Team A">${teams.map((t) => option(t, idA)).join('')}</select>
+        <span class="muted">vs</span>
+        <select id="scout-b" aria-label="Team B">${teams.map((t) => option(t, idB)).join('')}</select>
+      </div>
+    </div>
+    ${upcoming.length ? `
+      <div class="quick-picks"><span class="muted small">Upcoming:</span>
+        ${upcoming.map((g) => `<a href="#/scout/${esc(g.teams[0].id)}/${esc(g.teams[1].id)}">${esc(g.teams[0].short || g.teams[0].name)} v ${esc(g.teams[1].short || g.teams[1].name)} <span class="muted">${esc(shortDate(g.start))}</span></a>`).join('')}
+      </div>` : ''}
+
+    <section class="panel scout-head">
+      ${teamHead(a)}
+      <div class="scout-mid"><div class="vs">VS</div>${nextInfo}</div>
+      ${teamHead(b)}
+    </section>
+
+    ${notes.length ? `
+    <section class="panel">
+      <h3>Referee notes</h3>
+      <ul class="notes">${notes.map((n) => `<li class="${n.tone}">${esc(n.text)}</li>`).join('')}</ul>
+    </section>` : ''}
+
+    ${comparison.length ? `
+    <section class="panel">
+      <h3>Season averages <span class="muted small">per game incl. finals · small number = league rank</span></h3>
+      <div class="table-wrap"><table class="data compare">
+        <thead><tr><th class="left">Stat</th><th>${esc(a.name)}</th><th>${esc(b.name)}</th></tr></thead>
+        <tbody>${comparison.map((m) => {
+          const better = m.a === m.b || m.a === null || m.b === null ? 0 : (m.a > m.b ? 1 : -1);
+          return `<tr class="${m.ref ? 'ref' : ''}">
+            <td class="left">${esc(m.label)}${m.ref ? ' <span class="ref-dot" title="Referee-relevant">●</span>' : ''}</td>
+            <td class="${better > 0 ? 'strong' : ''}">${metricVal(m, m.a)} <span class="rank">${m.rankA ? ordinal(m.rankA) : ''}</span></td>
+            <td class="${better < 0 ? 'strong' : ''}">${metricVal(m, m.b)} <span class="rank">${m.rankB ? ordinal(m.rankB) : ''}</span></td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>
+    </section>` : ''}
+
+    <section class="scout-grid">
+      ${[[a, leadersA], [b, leadersB]].map(([t, L]) => `
+        <div class="panel">
+          <h3>${logo(t, 'tiny-logo')}${esc(t.name)}: key players</h3>
+          ${season.players.length ? LEADER_CATEGORIES.map((c) => leaderTable(c, L[c.key])).join('') : '<p class="muted">Player stats unavailable right now.</p>'}
+        </div>`).join('')}
+    </section>
+
+    <section class="panel">
+      <h3>Head to head${h2hSeason.id !== state.seasonId && h2h.played.length ? ` <span class="muted small">(${esc(h2hSeason.name)}: no meetings yet this season)</span>` : ''}</h3>
+      ${h2h.played.length ? `<div class="cards">${h2h.played.map(card).join('')}</div>` : '<p class="muted">These teams haven\'t played each other this season or last.</p>'}
+      ${breakdown ? lastMeetingHtml(lastMeeting, breakdown, h2hSeason.name) : (lastMeeting ? '<p class="muted">Box score for the last meeting is unavailable right now.</p>' : '')}
+    </section>
+
+    <section class="scout-grid">
+      ${[a, b].map((t) => `
+        <div class="panel">
+          <h3>${logo(t, 'tiny-logo')}${esc(t.name)}: last 5 games</h3>
+          ${recentHtml(recentGames(fixtures.data, fixtures.includes, t.id))}
+          <p class="muted small">${close[t.id].close} of ${close[t.id].played} games decided by 5 or fewer.</p>
+        </div>`).join('')}
+    </section>`;
+
+  const go = () => {
+    const x = document.getElementById('scout-a').value;
+    const y = document.getElementById('scout-b').value;
+    location.hash = `#/scout/${x}/${y}`;
+  };
+  document.getElementById('scout-a').addEventListener('change', go);
+  document.getElementById('scout-b').addEventListener('change', go);
+}
+
+function leaderTable(cat, rows) {
+  if (!rows?.length) return '';
+  const fmt = (r, [, key, kind]) => {
+    if (kind === 'int') return r[key];
+    if (kind === 'pct') return r[key] < 0 ? '–' : f1(r[key] * 100);
+    return f1(r[key]);
+  };
+  return `
+    <div class="leader">
+      <div class="leader-title">${esc(cat.title)}</div>
+      <table class="mini">
+        <thead><tr><th class="left">Player</th><th>GP</th>${cat.cols.map(([l]) => `<th>${esc(l)}</th>`).join('')}</tr></thead>
+        <tbody>${rows.map((r) => `<tr><td class="left">${esc(r.name)}</td><td class="muted">${r.gp}</td>${cat.cols.map((c, i) => `<td class="${i === 0 ? 'strong' : ''}">${esc(fmt(r, c))}</td>`).join('')}</tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+}
+
+function lastMeetingHtml(meeting, breakdown, seasonLabel) {
+  const vsAvg = (v, avg) => `${esc(v)}${avg === null || avg === undefined ? '' : ` <span class="muted">(${f1(avg)})</span>`}`;
+  const delta = (d, m) => {
+    if (d === null) return '';
+    const good = m.low ? d < 0 : d > 0;
+    const cls = Math.abs(d) < 0.05 ? '' : (m.ref ? (d > 0 ? 'up-ref' : 'down-ref') : (good ? 'up' : 'down'));
+    return `<span class="${cls}">${d > 0 ? '+' : ''}${f1(d)}</span>`;
+  };
+  return `
+    <h4>Last meeting vs ${esc(seasonLabel)} averages <span class="muted small">${esc(formatDate(meeting.start))}</span></h4>
+    <div class="scout-grid">
+      ${meeting.teams.map((t) => {
+        const bd = breakdown[t.id];
+        if (!bd) return '';
+        return `
+        <div>
+          <div class="leader-title">${logo(t, 'tiny-logo')}${esc(t.name)} <span class="muted">${esc(t.score)}</span></div>
+          <table class="mini">
+            <thead><tr><th class="left">Stat</th><th>Game</th><th>Avg</th><th>+/-</th></tr></thead>
+            <tbody>${bd.metrics.map((m) => `<tr><td class="left">${esc(m.label)}</td><td class="strong">${gameVal(m.game)}</td><td class="muted">${metricVal(m, m.season)}</td><td>${delta(m.delta, m)}</td></tr>`).join('')}</tbody>
+          </table>
+          <table class="mini players">
+            <thead><tr><th class="left">Player <span class="muted">(season avg)</span></th><th>PTS</th><th>REB</th><th>AST</th><th>PF</th></tr></thead>
+            <tbody>${bd.players.map((p) => `<tr class="${p.fouls >= 5 ? 'foul-out' : p.fouls >= 4 ? 'foul-trouble' : ''}">
+              <td class="left">${esc(p.name)}${p.tech ? ' <span class="tag">T</span>' : ''}${p.unsp ? ' <span class="tag">U</span>' : ''}</td>
+              <td>${vsAvg(p.pts, p.seasonPpg)}</td><td>${vsAvg(p.reb, p.seasonRpg)}</td><td>${vsAvg(p.ast, p.seasonApg)}</td><td>${vsAvg(p.fouls, p.seasonFouls)}</td>
+            </tr>`).join('')}</tbody>
+          </table>
+        </div>`;
+      }).join('')}
+    </div>
+    <p class="muted small"><span class="foul-key trouble">Orange</span> = 4 fouls, <span class="foul-key out">red</span> = 5 or more. <span class="tag">T</span> technical, <span class="tag">U</span> unsportsmanlike.</p>`;
+}
+
+function recentHtml(games) {
+  if (!games.length) return '<p class="muted">No games played yet.</p>';
+  return `<table class="mini recent"><tbody>${games.map((g) => `
+    <tr onclick="location.hash='#/game/${esc(g.id)}'">
+      <td class="muted">${esc(shortDate(g.start))}</td>
+      <td class="left">${g.home ? 'vs' : '@'} ${esc(g.opponent)}${g.final ? ' <span class="tag">Final</span>' : ''}</td>
+      <td><span class="form ${g.won ? 'w' : 'l'}">${g.won ? 'W' : 'L'}</span></td>
+      <td class="strong">${g.scoreFor}–${g.scoreAgainst}</td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
 // ---------- Routing ----------
 
-const PAGES = { results: renderResults, ladder: renderLadder, stats: renderStats };
+const PAGES = { results: renderResults, ladder: renderLadder, stats: renderStats, scout: renderScout };
 
 function currentPage() {
   if (location.hash.startsWith('#/ladder')) return 'ladder';
   if (location.hash.startsWith('#/stats')) return 'stats';
+  if (location.hash.startsWith('#/scout')) return 'scout';
   return 'results';
 }
 
@@ -316,7 +554,10 @@ async function route() {
   const token = ++renderToken;
   const gameId = /^#\/game\/([\w-]+)/.exec(location.hash)?.[1];
   const page = gameId ? null : currentPage();
-  const round = /^#\/results\/([\w-]+)/.exec(location.hash)?.[1];
+  // Page-specific URL bits: the round for results, the two team ids for scout.
+  const param = page === 'scout'
+    ? (/^#\/scout\/([\w-]+)\/([\w-]+)/.exec(location.hash)?.slice(1) ?? [])
+    : /^#\/results\/([\w-]+)/.exec(location.hash)?.[1];
   document.querySelectorAll('.tabs a').forEach((a) => a.classList.toggle('active', a.dataset.page === page));
   pickers.hidden = Boolean(gameId);
   window.scrollTo(0, 0);
@@ -326,7 +567,7 @@ async function route() {
       await renderGame(gameId, token);
     } else {
       await ensureSeasons();
-      if (token === renderToken) await PAGES[page](token, round);
+      if (token === renderToken) await PAGES[page](token, param);
     }
   } catch (err) {
     if (token === renderToken) showError(err);
@@ -336,13 +577,17 @@ async function route() {
 compPicker.innerHTML = COMPETITIONS.map(([id, name]) => `<option value="${id}">${esc(name)}</option>`).join('');
 compPicker.value = COMPETITIONS.some(([id]) => id === storedCompetition()) ? storedCompetition() : COMPETITIONS[0][0];
 // A new competition/season has different rounds, so drop the round from the URL and show its default.
-function rerouteForNewSeason() {
-  if (currentPage() === 'results' && location.hash !== '#/results') location.hash = '#/results'; // hashchange routes
+// Scout keeps its two teams across seasons (same club ids), but not across competitions.
+function rerouteForNewSeason({ newCompetition = false } = {}) {
+  const page = currentPage();
+  const base = `#/${page}`;
+  const reset = page === 'results' || (page === 'scout' && newCompetition);
+  if (reset && location.hash !== base) location.hash = base; // hashchange routes
   else route();
 }
 compPicker.addEventListener('change', () => {
   try { localStorage.setItem(COMP_KEY, compPicker.value); } catch { /* private mode etc. */ }
-  rerouteForNewSeason();
+  rerouteForNewSeason({ newCompetition: true });
 });
 seasonPicker.addEventListener('change', () => {
   state.seasonId = seasonPicker.value;

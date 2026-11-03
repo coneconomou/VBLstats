@@ -68,6 +68,9 @@ export const getSeasonFixtures = (seasonId) =>
 export const getStandings = (seasonId) =>
   synergy(`seasons/${seasonId}/standings`, { limit: '200', include: 'entities' });
 
+export const getTeamSeasonStats = (seasonId) =>
+  synergy(`statistics/for/entity/in/seasons/${seasonId}`, { limit: '100' });
+
 export const getSeasonPlayerStats = (seasonId) =>
   synergy(`statistics/for/person/in/seasons/${seasonId}`, { limit: '1000', include: 'persons,entities' }, { save: false });
 

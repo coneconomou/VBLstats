@@ -299,7 +299,18 @@ export function playerSeasonRows(stats, includes) {
         ftm: s.freeThrowsMade ?? 0,
         fta: s.freeThrowsAttempted ?? 0,
         fd: s.foulsDrawn ?? 0,
+        // Extra fields for the Scout page (not table columns).
+        personId: p.personId,
+        fouls: s.foulsTotal ?? 0, // every foul type, the number that matters for foul trouble
+        tech: s.foulsTechnical ?? 0,
+        unsp: s.foulsUnsportsmanlike ?? 0,
+        dq: s.foulsDisqualifying ?? 0,
+        fdpg: s.foulsDrawnPerGame ?? 0,
+        ftapg: s.freeThrowsAttemptedPerGame ?? 0,
+        thmpg: s.pointsThreeMadePerGame ?? 0,
+        thapg: s.pointsThreeAttemptedPerGame ?? 0,
       };
+      row.foulspg = row.gp ? row.fouls / row.gp : 0;
       row.fgp = ratio(row.fgm, row.fga);
       row.twp = ratio(row.twm, row.twa);
       row.thp = ratio(row.thm, row.tha);
