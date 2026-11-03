@@ -17,4 +17,5 @@ Show Big V stats the way I like: results by round (each game with final score, q
 - **Decided:** Scout contents: matchup header (ladder spot, record, last 5 incl. finals, next meeting), rule-based referee notes, season averages side by side with league ranks, top-3 leaders per team (scoring, rebounding, assists, threes, fouls committed, fouls drawn), head-to-head (falls back to last season if they haven't met) with the last meeting vs season averages and every player's line, last 5 games per team.
 - **Decided:** Fouls in Scout = all player fouls (personal + offensive + technical + unsportsmanlike); team totals exclude coach/bench technicals. Team season averages include finals (the ladder doesn't).
 - **Open:** Captain "(C)" marker: not in the Synergy data we fetch, so it's left out.
-- **Open:** Hosting somewhere other than localhost (any static host works).
+- **Decided:** Runs as a desktop app via a shortcut (no install, no Electron): Edge app window + hidden local server, basketball icon (`app/icon.ico`). The app's browser profile has sync/implicit sign-in turned off.
+- **Open:** Hosting it online (any static host works), which would also make it usable on a phone.

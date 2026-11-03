@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "node serve.js",
-    "test": "node --test"
+    "test": "node --test",
+    "install-app": "powershell -NoProfile -ExecutionPolicy Bypass -File app/install-shortcuts.ps1"
   }
 }
