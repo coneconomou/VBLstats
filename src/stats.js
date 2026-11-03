@@ -181,7 +181,8 @@ export function boxScore(entityId, personStats, includes, entityStats) {
 
   return {
     players,
-    team: teamRow,
+    // NBL1 data has no team rebounds/turnovers or coach fouls, so no Team/Coach row there.
+    team: t.reboundsTeamOffensive === undefined ? null : teamRow,
     totals: entityStats ? statCells(t, { plusMinus: false }) : null,
   };
 }
@@ -266,7 +267,7 @@ export const PLAYER_COLUMNS = [
   { key: 'ftm', label: 'FTM', title: 'Free throws made (season)' },
   { key: 'fta', label: 'FTA', title: 'Free throws attempted (season)' },
   { key: 'ftp', label: 'FT%', title: 'Free throw %', fmt: (r) => pct(r.ftm, r.fta) },
-  { key: 'fd', label: 'FD', title: 'Fouls drawn (season)' },
+  { key: 'fd', label: 'FD', title: 'Fouls drawn (season)', fmt: (r) => r.fd ?? '–', optional: true },
 ];
 
 const ratio = (m, a) => (a ? m / a : -1); // -1 sorts "no attempts" below 0%
@@ -304,14 +305,14 @@ export function playerSeasonRows(stats, includes) {
         tha: s.pointsThreeAttempted ?? 0,
         ftm: s.freeThrowsMade ?? 0,
         fta: s.freeThrowsAttempted ?? 0,
-        fd: s.foulsDrawn ?? 0,
+        fd: s.foulsDrawn ?? null, // NBL1 doesn't record fouls drawn
         // Extra fields for the Scout page (not table columns).
         personId: p.personId,
         fouls: s.foulsTotal ?? 0, // every foul type, the number that matters for foul trouble
         tech: s.foulsTechnical ?? 0,
         unsp: s.foulsUnsportsmanlike ?? 0,
         dq: s.foulsDisqualifying ?? 0,
-        fdpg: s.foulsDrawnPerGame ?? 0,
+        fdpg: s.foulsDrawnPerGame ?? null,
         ftapg: s.freeThrowsAttemptedPerGame ?? 0,
         thmpg: s.pointsThreeMadePerGame ?? 0,
         thapg: s.pointsThreeAttemptedPerGame ?? 0,

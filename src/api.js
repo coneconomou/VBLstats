@@ -1,8 +1,16 @@
-// The BV site reads everything through NBL's cached proxy of the Synergy (Atrium Sports) API.
+// Data for two leagues behind one interface (getSeasons, getSeasonFixtures, getStandings, getGame, ...).
+//
+// Big V: the BV site reads everything through NBL's cached proxy of the Synergy (Atrium Sports) API.
 // It's public, sends CORS `*`, and caches ~2 minutes, so we can call it straight from the browser.
 // Gotcha: when the upstream is busy it answers 200 with `"data": null` (and caches that for ~2 min),
 // so every successful response is also saved locally and used as a fallback.
+//
+// NBL1: comes from NBL1's own "rosetta" API through our local server (serve.js /nbl1-api), then
+// src/nbl1.js reshapes it to look like the Synergy data above.
 import { cleanFixtures } from './stats.js';
+import {
+  NBL1_COMPETITIONS, seasonsFor, fixturesFromMatches, standingsFor, gameFromMatch, seasonTotals,
+} from './nbl1.js';
 
 const BASE = 'https://prod.services.nbl.com.au/api_cache/bbv/synergy';
 const STORE_PREFIX = 'vblstats.api.';
@@ -62,22 +70,24 @@ async function synergy(route, params = {}, { save = true } = {}) {
   return promise;
 }
 
-export const getSeasons = (competitionId) => synergy(`competitions/${competitionId}/seasons`);
+const bigv = {};
 
-export const getSeasonFixtures = (seasonId) =>
+bigv.getSeasons = (competitionId) => synergy(`competitions/${competitionId}/seasons`);
+
+bigv.getSeasonFixtures = (seasonId) =>
   synergy(`seasons/${seasonId}/fixtures`, { limit: '500', include: 'entities,venues,competitions,seasons' })
     .then((r) => ({ ...r, data: cleanFixtures(r.data) }));
 
-export const getStandings = (seasonId) =>
+bigv.getStandings = (seasonId) =>
   synergy(`seasons/${seasonId}/standings`, { limit: '200', include: 'entities' });
 
-export const getTeamSeasonStats = (seasonId) =>
+bigv.getTeamSeasonStats = (seasonId) =>
   synergy(`statistics/for/entity/in/seasons/${seasonId}`, { limit: '100' });
 
-export const getSeasonPlayerStats = (seasonId) =>
+bigv.getSeasonPlayerStats = (seasonId) =>
   synergy(`statistics/for/person/in/seasons/${seasonId}`, { limit: '1000', include: 'persons,entities' }, { save: false });
 
-export async function getGame(fixtureId) {
+bigv.getGame = async (fixtureId) => {
   // A finished game never changes, so once we have it there's no need to hit the API again.
   const savedGame = readStore(`game.${fixtureId}`);
   if (savedGame) return savedGame;
@@ -92,4 +102,109 @@ export async function getGame(fixtureId) {
   const game = { fixture, people, teams, periods };
   if (fixture.data[0].status === 'CONFIRMED' && people.data.length) writeStore(`game.${fixtureId}`, game);
   return game;
+};
+
+// ---------- NBL1 ----------
+
+const nbl1Memo = new Map();
+const NBL1_MEMO_MS = 5 * 60 * 1000;
+
+function rosetta(path) {
+  const hit = nbl1Memo.get(path);
+  if (hit && Date.now() - hit.at < NBL1_MEMO_MS) return hit.promise;
+  const promise = fetch(`/nbl1-api/${path}`)
+    .then(async (res) => {
+      if (!res.ok) {
+        // 404 here means the page was opened without the app's local server (e.g. a static host).
+        throw new Error(res.status === 404 ? 'NBL1 needs the VBL Stats app (its local server) running.' : `NBL1 data error ${res.status}`);
+      }
+      return (await res.json()).data ?? [];
+    })
+    .catch((err) => { nbl1Memo.delete(path); throw err; });
+  nbl1Memo.set(path, { at: Date.now(), promise });
+  return promise;
 }
+
+// The app only passes season ids around; rosetta needs the year + conference to fetch a season.
+const nbl1Seasons = new Map();
+function nbl1Season(seasonId) {
+  const s = nbl1Seasons.get(seasonId);
+  if (!s) throw new Error('Unknown NBL1 season: pick it again from the season list.');
+  return s;
+}
+
+const nbl1 = {};
+
+nbl1.getSeasons = async (competitionId) => {
+  const comp = NBL1_COMPETITIONS.find((c) => c.id === competitionId);
+  const seasons = seasonsFor(await rosetta('nbl1/seasons'), comp);
+  for (const s of seasons) nbl1Seasons.set(s.seasonId, { ...s, comp });
+  return { data: seasons, includes: {} };
+};
+
+nbl1.getSeasonFixtures = async (seasonId) => {
+  const s = nbl1Season(seasonId);
+  const matches = await rosetta(`nbl1/matches/in/season/${s.year}/regular/${s.conf}`);
+  const fx = fixturesFromMatches(matches, seasonId);
+  return { ...fx, data: cleanFixtures(fx.data) };
+};
+
+nbl1.getStandings = async (seasonId) => {
+  const s = nbl1Season(seasonId);
+  return standingsFor(await rosetta(`nbl1/standings/${s.year}/regular?limit=200`), s, s.comp);
+};
+
+nbl1.getGame = async (fixtureId) => {
+  const [match] = await rosetta(`match/${fixtureId}/live/all`);
+  if (!match) throw new Error('Game not found');
+  return gameFromMatch(match);
+};
+
+// NBL1 has no full season-stats endpoint, so season stats are added up from every finished game's box score.
+// The local server keeps finished games on disk, so only the first time is slow.
+let onTotalsProgress = null;
+export function setTotalsProgress(fn) { onTotalsProgress = fn; }
+
+const totalsMemo = new Map();
+function nbl1Totals(seasonId) {
+  if (!totalsMemo.has(seasonId)) {
+    const promise = (async () => {
+      const fixtures = await nbl1.getSeasonFixtures(seasonId);
+      const done = fixtures.data.filter((f) => f.status === 'CONFIRMED');
+      const games = [];
+      let next = 0;
+      let finished = 0;
+      // NBL1 takes 2-4 s per uncached game; 10 at a time makes a first full season ~1 min, still gentle on their API.
+      const worker = async () => {
+        while (next < done.length) {
+          const f = done[next++];
+          try { games.push(await nbl1.getGame(f.fixtureId)); } catch { /* skip a game that won't load */ }
+          finished += 1;
+          onTotalsProgress?.(finished, done.length);
+        }
+      };
+      await Promise.all(Array.from({ length: 10 }, worker));
+      return seasonTotals(games);
+    })().catch((err) => { totalsMemo.delete(seasonId); throw err; });
+    totalsMemo.set(seasonId, promise);
+  }
+  return totalsMemo.get(seasonId);
+}
+
+nbl1.getSeasonPlayerStats = async (seasonId) => (await nbl1Totals(seasonId)).players;
+nbl1.getTeamSeasonStats = async (seasonId) => (await nbl1Totals(seasonId)).teams;
+
+// ---------- Public interface ----------
+
+export const LEAGUES = { bigv: 'Big V', nbl1: 'NBL1' };
+let league = 'bigv';
+const sources = { bigv, nbl1 };
+export function setLeague(l) { league = sources[l] ? l : 'bigv'; }
+export const getLeague = () => league;
+
+export const getSeasons = (...a) => sources[league].getSeasons(...a);
+export const getSeasonFixtures = (...a) => sources[league].getSeasonFixtures(...a);
+export const getStandings = (...a) => sources[league].getStandings(...a);
+export const getTeamSeasonStats = (...a) => sources[league].getTeamSeasonStats(...a);
+export const getSeasonPlayerStats = (...a) => sources[league].getSeasonPlayerStats(...a);
+export const getGame = (...a) => sources[league].getGame(...a);

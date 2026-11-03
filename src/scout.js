@@ -2,7 +2,8 @@
 // Pure functions over Synergy data (no DOM, no fetch), so the whole report can be built and tested in Node.
 import { lookup, entityLogo, gameState, summariseFixture } from './stats.js';
 
-const per = (total, games) => (games ? (total ?? 0) / games : 0);
+// null when the stat isn't recorded at all (NBL1 has no fouls drawn / unsportsmanlike), so it shows "–" not 0.
+const per = (total, games) => (total === undefined || total === null ? null : games ? total / games : 0);
 const ratio = (made, att) => (att ? (made / att) * 100 : null);
 
 // Player fouls only: the team total also counts coach and bench technicals.

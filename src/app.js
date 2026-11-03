@@ -1,6 +1,8 @@
 import {
   getSeasons, getSeasonFixtures, getGame, getStandings, getSeasonPlayerStats, getTeamSeasonStats,
+  LEAGUES, setLeague, getLeague, setTotalsProgress,
 } from './api.js';
+import { NBL1_COMPETITIONS } from './nbl1.js';
 import {
   summariseFixture, roundsFromSeason, gamesInRound, defaultRound, roundLabel, pickCurrentSeason, periodScores, boxScore, COLUMNS,
   nextOpponents, ladderRows, playerSeasonRows, sortRows, PLAYER_COLUMNS,
@@ -11,7 +13,7 @@ import {
 } from './scout.js';
 
 // Big V competitions in Synergy. IDs are stable across seasons; seasons are looked up live.
-const COMPETITIONS = [
+const BIGV_COMPETITIONS = [
   ['ee3cafaa-76a3-11eb-a481-2a86bfd2d24d', 'Championship Men'],
   ['ee4035f8-76a3-11eb-a481-2a86bfd2d24d', 'Championship Women'],
   ['ee43298e-76a3-11eb-a481-2a86bfd2d24d', 'Division One Men'],
@@ -26,10 +28,17 @@ const COMPETITIONS = [
   ['ee6709f8-76a3-11eb-a481-2a86bfd2d24d', 'Youth League Two Women'],
   ['a5809a1b-b1d9-11ef-823f-656618bcf3f0', 'Youth League Three Men'],
 ];
-const COMP_KEY = 'vblstats.competition';
+const COMPETITIONS_BY_LEAGUE = {
+  bigv: BIGV_COMPETITIONS,
+  nbl1: NBL1_COMPETITIONS.map((c) => [c.id, c.name]),
+};
+const LEAGUE_KEY = 'vblstats.league';
+// Big V keeps the original key so the saved choice from before leagues existed still applies.
+const compKey = (league) => (league === 'bigv' ? 'vblstats.competition' : `vblstats.competition.${league}`);
 
 const app = document.getElementById('app');
 const compPicker = document.getElementById('competition');
+const leaguePicker = document.getElementById('league');
 const seasonPicker = document.getElementById('season');
 const pickers = document.querySelector('.pickers');
 
@@ -46,8 +55,12 @@ let renderToken = 0;
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-function storedCompetition() {
-  try { return localStorage.getItem(COMP_KEY); } catch { return null; }
+function stored(key) {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+
+function store(key, value) {
+  try { localStorage.setItem(key, value); } catch { /* private mode etc. */ }
 }
 
 function formatDate(local) {
@@ -68,7 +81,7 @@ function status(game) {
 }
 
 function loading(text = 'Loading…') {
-  app.innerHTML = `<p class="muted center">${esc(text)}</p>`;
+  app.innerHTML = `<p class="muted center loading-msg">${esc(text)}</p>`;
 }
 
 function showError(err) {
@@ -215,6 +228,8 @@ async function renderStats(token) {
 }
 
 function drawStatsTable(all) {
+  // Columns a league doesn't record (NBL1: fouls drawn) are left out rather than shown as a row of dashes.
+  const columns = PLAYER_COLUMNS.filter((c) => !c.optional || all.some((r) => r[c.key] !== null && r[c.key] !== undefined));
   const { key, dir } = state.statsSort;
   const rows = sortRows(state.statsTeam === 'all' ? all : all.filter((r) => r.teamId === state.statsTeam), key, dir);
   const arrow = (k) => (k === key ? (dir === 'desc' ? ' ↓' : ' ↑') : '');
@@ -227,13 +242,13 @@ function drawStatsTable(all) {
         <thead><tr>
           <th class="num">#</th>
           <th class="name sortable ${key === 'name' ? 'sorted' : ''}" data-key="name">Player${arrow('name')}</th>
-          ${PLAYER_COLUMNS.map((c) => `<th class="sortable ${c.key === key ? 'sorted' : ''}" data-key="${c.key}" title="${esc(c.title)}">${esc(c.label)}${arrow(c.key)}</th>`).join('')}
+          ${columns.map((c) => `<th class="sortable ${c.key === key ? 'sorted' : ''}" data-key="${c.key}" title="${esc(c.title)}">${esc(c.label)}${arrow(c.key)}</th>`).join('')}
         </tr></thead>
         <tbody>${rows.map((r, i) => `
           <tr>
             <td class="num">${i + 1}</td>
             <td class="name"><span class="team-cell">${logo(r, 'tiny-logo')}<span>${esc(r.name)}<span class="sub">${esc(r.team)}</span></span></span></td>
-            ${PLAYER_COLUMNS.map((c) => `<td class="${c.key === key ? 'sorted' : ''}">${esc(c.fmt ? c.fmt(r) : r[c.key])}</td>`).join('')}
+            ${columns.map((c) => `<td class="${c.key === key ? 'sorted' : ''}">${esc(c.fmt ? c.fmt(r) : r[c.key])}</td>`).join('')}
           </tr>`).join('')}
         </tbody>
       </table>
@@ -296,7 +311,7 @@ function teamBox(team, people, teams) {
       <td class="name">${esc(p.name)}${p.starter ? '<span class="star" title="Starter">●</span>' : ''}</td>
       ${p.dnp ? `<td colspan="${COLUMNS.length}" class="dnp-cell">DNP</td>` : p.cells.map((c) => `<td>${esc(c)}</td>`).join('')}
     </tr>`).join('');
-  const team_ = `<tr class="team-row"><td class="num"></td><td class="name">Team/Coach</td>${box.team.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`;
+  const team_ = box.team ? `<tr class="team-row"><td class="num"></td><td class="name">Team/Coach</td>${box.team.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>` : '';
   const totals = box.totals
     ? `<tr class="totals"><td class="num"></td><td class="name">Total</td>${box.totals.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>` : '';
   return `
@@ -574,8 +589,24 @@ async function route() {
   }
 }
 
-compPicker.innerHTML = COMPETITIONS.map(([id, name]) => `<option value="${id}">${esc(name)}</option>`).join('');
-compPicker.value = COMPETITIONS.some(([id]) => id === storedCompetition()) ? storedCompetition() : COMPETITIONS[0][0];
+function fillCompetitions() {
+  const league = getLeague();
+  const comps = COMPETITIONS_BY_LEAGUE[league];
+  compPicker.innerHTML = comps.map(([id, name]) => `<option value="${id}">${esc(name)}</option>`).join('');
+  const saved = stored(compKey(league));
+  compPicker.value = comps.some(([id]) => id === saved) ? saved : comps[0][0];
+  state.seasonsFor = null; // force the season list to reload for the new competition list
+}
+
+leaguePicker.innerHTML = Object.entries(LEAGUES).map(([id, name]) => `<option value="${id}">${esc(name)}</option>`).join('');
+setLeague(stored(LEAGUE_KEY) ?? 'bigv');
+leaguePicker.value = getLeague();
+fillCompetitions();
+// NBL1 season stats are built from every game's box score; show how far along that is.
+setTotalsProgress((done, total) => {
+  const msg = app.querySelector('.loading-msg');
+  if (msg) msg.textContent = `Adding up ${total} NBL1 box scores: ${done}/${total} (only slow the first time)`;
+});
 // A new competition/season has different rounds, so drop the round from the URL and show its default.
 // Scout keeps its two teams across seasons (same club ids), but not across competitions.
 function rerouteForNewSeason({ newCompetition = false } = {}) {
@@ -586,8 +617,16 @@ function rerouteForNewSeason({ newCompetition = false } = {}) {
   else route();
 }
 compPicker.addEventListener('change', () => {
-  try { localStorage.setItem(COMP_KEY, compPicker.value); } catch { /* private mode etc. */ }
+  store(compKey(getLeague()), compPicker.value);
   rerouteForNewSeason({ newCompetition: true });
+});
+leaguePicker.addEventListener('change', () => {
+  setLeague(leaguePicker.value);
+  store(LEAGUE_KEY, getLeague());
+  fillCompetitions();
+  // Game pages belong to one league, so switching league goes back to Results.
+  if (/^#\/game\//.test(location.hash)) location.hash = '#/results';
+  else rerouteForNewSeason({ newCompetition: true });
 });
 seasonPicker.addEventListener('change', () => {
   state.seasonId = seasonPicker.value;
