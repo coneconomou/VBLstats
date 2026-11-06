@@ -11,6 +11,9 @@ import {
   teamList, meetings, upcomingGames, recentGames, closeGames, teamComparison, teamLeaders, LEADER_CATEGORIES,
   matchupBreakdown, refereeNotes, ordinal, currentStreak,
 } from './scout.js';
+import { markSvg } from './mark.js';
+
+document.querySelector('.brand').insertAdjacentHTML('afterbegin', markSvg());
 
 // Big V competitions in Synergy. IDs are stable across seasons; seasons are looked up live.
 const BIGV_COMPETITIONS = [

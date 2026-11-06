@@ -4,6 +4,7 @@ Show Big V stats the way I like: results by round (each game with final score, q
 
 ## Decisions
 - **Decided:** Static HTML/JS, no framework or build. Calls the NBL Synergy proxy directly (it allows CORS).
+- **Decided:** Branding is "Pregame" (league-neutral, referees first): shot-clock look, amber `#ffb000` on warm near-black, Doto for the wordmark, uppercase tabs. Logo = a shot-clock display showing the alternating possession arrow (`src/mark.js`); `node app/make-icon.js` redraws `app/icon.png`/`icon.ico` from it. Launcher, shortcut and repo names still say VBL Stats.
 - **Decided:** Results page (was Finals) with round tabs 1..N plus "Finals", like basketballvictoria.com.au/bigv/fixtures. All `fixtureType: FINAL` games go under Finals regardless of round number. Defaults to the round of the most recent game that has started. Games in a round are listed oldest first. Round is in the URL (`#/results/7`) so the game page's back link returns to it.
 - **Decided:** Competition picker for all Big V comps, default Championship Men, remembered in localStorage.
 - **Decided:** Box score columns match the official BV widget (MIN … EFF). PF = all fouls (`foulsTotal`), like the widget.
