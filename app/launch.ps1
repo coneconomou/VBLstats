@@ -1,14 +1,15 @@
-# Opens VBL Stats in its own app window (Edge/Chrome --app mode, no tabs or address bar).
+# Opens Pregame in its own app window (Edge/Chrome --app mode, no tabs or address bar).
 # Starts the local server if it isn't already running, and stops it again when the window closes.
-# Run via "VBL Stats.vbs" so no console window flashes up.
+# Run via "Pregame.vbs" so no console window flashes up.
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
+# Folder keeps its pre-rebrand name so saved settings carry over.
 $profileDir = Join-Path $env:LOCALAPPDATA 'VBLStats\browser'
 
 function Show-Error([string]$message) {
     Add-Type -AssemblyName System.Windows.Forms
-    [System.Windows.Forms.MessageBox]::Show($message, 'VBL Stats', 'OK', 'Error') | Out-Null
+    [System.Windows.Forms.MessageBox]::Show($message, 'Pregame', 'OK', 'Error') | Out-Null
 }
 
 # True only if *our* server answers on this port (serve.js /__vblstats), not just any program.
@@ -44,7 +45,7 @@ try {
         }
         if (-not $port) {
             $code = if ($server.HasExited) { $server.ExitCode } else { 'none (timed out)' }
-            throw "The VBL Stats server didn't start (exit code: $code). Is Node.js installed?"
+            throw "The Pregame server didn't start (exit code: $code). Is Node.js installed?"
         }
         break
     }

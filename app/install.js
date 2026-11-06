@@ -1,4 +1,4 @@
-// `npm run install-app`: creates the double-click VBL Stats app for this computer's OS.
+// `npm run install-app`: creates the double-click Pregame app for this computer's OS.
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';

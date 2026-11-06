@@ -1,5 +1,5 @@
 #!/bin/bash
-# macOS version of launch.ps1. install-mac.sh copies this into "VBL Stats.app" as its executable.
+# macOS version of launch.ps1. install-mac.sh copies this into "Pregame.app" as its executable.
 # Starts serve.js (unless already running), opens Chrome/Edge in --app mode with its own profile,
 # and stops the server when that browser is quit. Falls back to the default browser (server then
 # keeps running in the background until logout).
@@ -8,10 +8,11 @@
 # PATH, so node has to be referenced by its full path.
 source "$(dirname "$0")/../Resources/config.sh"
 
+# Folder keeps its pre-rebrand name so saved settings carry over.
 PROFILE_DIR="$HOME/Library/Application Support/VBLStats/browser"
 
 fail() {
-  osascript -e "display alert \"VBL Stats\" message \"$1\" as critical" >/dev/null 2>&1
+  osascript -e "display alert \"Pregame\" message \"$1\" as critical" >/dev/null 2>&1
   echo "$1" >&2
   exit 1
 }
@@ -39,7 +40,7 @@ for p in $(seq 5199 5209); do
     kill -0 "$SERVER_PID" 2>/dev/null || break # server died
     sleep 0.2
   done
-  [ -n "$PORT" ] || fail "The VBL Stats server didn't start. Try running 'npm start' in Terminal to see why."
+  [ -n "$PORT" ] || fail "The Pregame server didn't start. Try running 'npm start' in Terminal to see why."
   break
 done
 [ -n "$PORT" ] || fail "Ports 5199-5209 are all in use by other programs."
@@ -64,3 +65,8 @@ fi
 # window doesn't quit it: Cmd+Q does, and that's when the server stops.
 "$BROWSER" --app="$URL" --user-data-dir="$PROFILE_DIR" --window-size=1400,900 \
   --no-first-run --no-default-browser-check --disable-sync >/dev/null 2>&1
+
+# If this profile's browser was already running (Chrome sometimes keeps it alive in the background),
+# the command above just hands the window to it and returns at once. Keep the server up until that
+# browser quits too, or the window opens on a server that has already stopped.
+while pgrep -f -- "--user-data-dir=$PROFILE_DIR" >/dev/null; do sleep 2; done

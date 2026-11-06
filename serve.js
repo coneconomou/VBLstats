@@ -109,5 +109,5 @@ export function createApp({ fetchImpl = fetch, cacheDir = join(root, '.cache', '
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const port = Number(process.env.PORT) || 5173;
   // Loopback only: nothing else on the network can reach this server.
-  createApp().listen(port, '127.0.0.1', () => console.log(`VBL Stats running at http://localhost:${port}`));
+  createApp().listen(port, '127.0.0.1', () => console.log(`Pregame running at http://localhost:${port}`));
 }

@@ -1,4 +1,4 @@
-# VBL Stats
+# Pregame
 
 Big V and NBL1 basketball results, box scores, ladders, player stats and a referee Scout report, in one dark-mode app.
 
@@ -11,9 +11,9 @@ Big V and NBL1 basketball results, box scores, ladders, player stats and a refer
    npm run install-app
    ```
 
-   - **Mac:** creates **VBL Stats** in your Applications folder plus a Desktop shortcut. Opens best in Chrome or Edge (its own app window); otherwise it opens in your default browser. Quit it with Cmd+Q.
-   - **Windows:** creates **VBL Stats** shortcuts on the Desktop and in the Start menu.
-3. Double-click **VBL Stats**.
+   - **Mac:** creates **Pregame** in your Applications folder plus a Desktop shortcut. Opens best in Chrome or Edge (its own app window); otherwise it opens in your default browser. Quit it with Cmd+Q.
+   - **Windows:** creates **Pregame** shortcuts on the Desktop and in the Start menu.
+3. Double-click **Pregame**.
 
 No app? `npm start`, then open http://localhost:5173 in a browser.
 

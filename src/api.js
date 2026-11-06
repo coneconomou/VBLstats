@@ -121,7 +121,7 @@ function rosetta(path) {
     .then(async (res) => {
       if (!res.ok) {
         // 404 here means the page was opened without the app's local server (e.g. a static host).
-        throw new Error(res.status === 404 ? 'NBL1 needs the VBL Stats app (its local server) running.' : `NBL1 data error ${res.status}`);
+        throw new Error(res.status === 404 ? 'NBL1 needs the Pregame app (its local server) running.' : `NBL1 data error ${res.status}`);
       }
       return (await res.json()).data ?? [];
     })
