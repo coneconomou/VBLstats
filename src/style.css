@@ -64,7 +64,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 }
 .rounds a:hover { color: var(--text); border-color: var(--muted); }
 .rounds a.active { background: var(--accent); border-color: var(--accent); color: #111; }
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); gap: 12px; }
 .card {
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
   padding: 12px 14px; display: grid; gap: 8px; transition: border-color .15s, transform .15s;
@@ -169,10 +169,15 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 .quick-picks a { flex: none; padding: 5px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 13px; }
 .quick-picks a:hover { border-color: var(--accent); }
 .scout-head { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px; text-align: center; }
-.scout-team { display: grid; justify-items: center; gap: 6px; }
+.scout-team { display: grid; justify-items: center; gap: 6px; min-width: 0; }
+.scout-team-name, .scout-team .small { max-width: 100%; overflow-wrap: break-word; }
+.scout-team .rec { white-space: nowrap; }
+.scout-form { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; }
+.scout-form .form { margin-right: 0; }
 .scout-logo { width: 72px; height: 72px; object-fit: contain; }
 .scout-team-name { font-family: var(--display); font-size: 24px; font-weight: 500; }
 .scout-mid { display: grid; gap: 4px; max-width: 220px; }
+.scout-next { display: grid; gap: 4px; }
 .scout-mid .vs { font-family: var(--display); font-size: 28px; color: var(--muted); }
 .notes { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
 .notes li { padding: 8px 12px; border-left: 3px solid var(--line); background: var(--panel-2); border-radius: 6px; }
@@ -210,9 +215,17 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
   .tabs { margin-right: 0; }
   .pickers { width: 100%; }
   .pickers select { flex: 1; min-width: 0; }
-  .scout-grid { grid-template-columns: 1fr; }
+  .scout-grid { grid-template-columns: minmax(0, 1fr); }
+  .scout-grid > div:not(.panel) { overflow-x: auto; } /* wide last-meeting tables scroll inside their panel */
   .scout-logo { width: 48px; height: 48px; }
   .scout-team-name { font-size: 17px; }
+  /* Teams side by side with a small VS between them; next-meeting details get their own full-width row. */
+  .scout-head { gap: 10px 8px; }
+  .scout-mid { display: contents; }
+  .scout-head > .scout-team:first-child { grid-column: 1; grid-row: 1; }
+  .scout-head > .scout-team:last-child { grid-column: 3; grid-row: 1; }
+  .scout-mid .vs { grid-column: 2; grid-row: 1; font-size: 20px; }
+  .scout-next { grid-column: 1 / -1; grid-row: 2; padding-top: 10px; border-top: 1px solid var(--line); }
   .scout-pickers select { flex: 1; min-width: 0; }
   .scout-pickers { width: 100%; }
   /* minmax(0, …) lets the team columns shrink below their content so long names wrap instead of overflowing. */

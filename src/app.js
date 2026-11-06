@@ -421,8 +421,8 @@ async function renderScout(token, [idA, idB] = []) {
       <div class="scout-team">
         ${logo(t, 'scout-logo')}
         <div class="scout-team-name">${esc(t.name)}</div>
-        ${l ? `<div class="muted small">${ordinal(l.position)} on ladder · ${l.wins}–${l.losses}</div>` : ''}
-        ${form ? `<div title="Last 5 games incl. finals, oldest to newest">${formPills(form)}</div>` : ''}
+        ${l ? `<div class="muted small">${ordinal(l.position)} on ladder · <span class="rec">${l.wins}–${l.losses}</span></div>` : ''}
+        ${form ? `<div class="scout-form" title="Last 5 games incl. finals, oldest to newest">${formPills(form)}</div>` : ''}
       </div>`;
   };
   const nextInfo = h2h.next
@@ -447,7 +447,7 @@ async function renderScout(token, [idA, idB] = []) {
 
     <section class="panel scout-head">
       ${teamHead(a)}
-      <div class="scout-mid"><div class="vs">VS</div>${nextInfo}</div>
+      <div class="scout-mid"><div class="vs">VS</div><div class="scout-next">${nextInfo}</div></div>
       ${teamHead(b)}
     </section>
 
@@ -574,8 +574,8 @@ const PAGES = { results: renderResults, ladder: renderLadder, stats: renderStats
 function currentPage() {
   if (location.hash.startsWith('#/ladder')) return 'ladder';
   if (location.hash.startsWith('#/stats')) return 'stats';
-  if (location.hash.startsWith('#/scout')) return 'scout';
-  return 'results';
+  if (location.hash.startsWith('#/results')) return 'results';
+  return 'scout'; // the default tab
 }
 
 async function route() {
