@@ -1,5 +1,8 @@
-// Draws the Pregame app icon (src/mark.js on a black rounded square) into app/icon.png (256px)
-// and app/icon.ico (16-256px). No dependencies: a tiny anti-aliased rasteriser + PNG/ICO writer.
+// Draws the Pregame app icon (src/mark.js on black) into:
+//   app/icon.png (256px, rounded: favicon + Mac app), app/icon.ico (16-256px, Windows shortcuts),
+//   app/apple-touch-icon.png (180px, square: iPhone/iPad home screen, iOS rounds the corners itself),
+//   app/icon-192.png + app/icon-512.png (square, mark inside the safe zone: Android home screen).
+// No dependencies: a tiny anti-aliased rasteriser + PNG/ICO writer.
 // Run `node app/make-icon.js` after changing the mark, then `npm run install-app` to refresh shortcuts.
 import { writeFileSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
@@ -26,13 +29,14 @@ const inRoundRect = (q) => (x, y) => {
 };
 
 // Shapes in icon pixels, painted in order: [test, bbox, color].
-function shapes(size) {
-  const pad = size * 0.12, k = size * 0.76 / 64;
+// radius: corner rounding as a share of the size (0 = square). scale: how much of the icon the mark fills.
+function shapes(size, { radius = 0.225, scale = 0.76 } = {}) {
+  const pad = size * (1 - scale) / 2, k = size * scale / 64;
   const map = (q) => ({ x: pad + q.x * k, y: pad + q.y * k, w: q.w * k, h: q.h * k, r: q.r * k });
   const rr = (q, color) => [inRoundRect(q), [q.x, q.y, q.x + q.w, q.y + q.h], color];
   const h = HOUSING, half = h.stroke / 2;
   const out = [
-    rr({ x: 0, y: 0, w: size, h: size, r: size * 0.225 }, BG),
+    rr({ x: 0, y: 0, w: size, h: size, r: size * radius }, BG),
     rr(map({ x: h.x - half, y: h.y - half, w: h.w + h.stroke, h: h.h + h.stroke, r: h.r + half }), COLORS.lit),
     rr(map({ x: h.x + half, y: h.y + half, w: h.w - h.stroke, h: h.h - h.stroke, r: h.r - half }), COLORS.housing),
   ];
@@ -44,9 +48,9 @@ function shapes(size) {
   return out;
 }
 
-export function render(size) {
+export function render(size, opts) {
   const px = new Float64Array(size * size * 4); // premultiplied RGBA, 0..1
-  for (const [test, [x0, y0, x1, y1], css] of shapes(size)) {
+  for (const [test, [x0, y0, x1, y1], css] of shapes(size, opts)) {
     const [r, g, b, a] = rgba(css);
     for (let y = Math.max(0, Math.floor(y0)); y < Math.min(size, Math.ceil(y1)); y++) {
       for (let x = Math.max(0, Math.floor(x0)); x < Math.min(size, Math.ceil(x1)); x++) {
@@ -88,8 +92,8 @@ function chunk(type, data) {
   return Buffer.concat([len, body, crc]);
 }
 
-export function png(size) {
-  const rgbaBuf = render(size), stride = size * 4;
+export function png(size, opts) {
+  const rgbaBuf = render(size, opts), stride = size * 4;
   const raw = Buffer.alloc((stride + 1) * size);
   for (let y = 0; y < size; y++) rgbaBuf.copy(raw, y * (stride + 1) + 1, y * stride, (y + 1) * stride);
   const ihdr = Buffer.alloc(13);
@@ -121,5 +125,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const dir = new URL('.', import.meta.url);
   writeFileSync(new URL('icon.png', dir), png(256));
   writeFileSync(new URL('icon.ico', dir), ico([16, 24, 32, 48, 64, 256]));
-  console.log('Wrote app/icon.png and app/icon.ico');
+  writeFileSync(new URL('apple-touch-icon.png', dir), png(180, { radius: 0, scale: 0.8 }));
+  // Android may crop to a circle: keep the mark inside the middle 80% ("maskable" safe zone).
+  for (const s of [192, 512]) writeFileSync(new URL(`icon-${s}.png`, dir), png(s, { radius: 0, scale: 0.62 }));
+  console.log('Wrote app/icon.png, icon.ico, apple-touch-icon.png, icon-192.png and icon-512.png');
 }

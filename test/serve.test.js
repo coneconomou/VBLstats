@@ -48,6 +48,9 @@ test('serves the app and the launcher health check', async () => {
   assert.equal((await get('/')).status, 200);
   assert.equal((await get('/src/app.js')).status, 200);
   assert.equal((await get('/app/icon.png')).status, 200);
+  assert.equal((await get('/app/apple-touch-icon.png')).status, 200);
+  assert.equal((await get('/app/icon-512.png')).status, 200);
+  assert.equal((await get('/manifest.webmanifest')).status, 200);
   assert.deepEqual(await get(HEALTH_PATH), { status: 200, body: HEALTH_BODY });
 });
 

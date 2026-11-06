@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { ROSETTA, ROSETTA_HEADERS, MEMO_MS, isAllowed, slimMatch, isValidResponse, isFinishedMatch } from './src/rosetta.js';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
-const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png' };
+const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 
 // Launcher check-in address: lets app/launch.ps1 tell this server apart from some other program on the port.
 export const HEALTH_PATH = '/__vblstats';
@@ -16,7 +16,8 @@ export const HEALTH_BODY = 'vblstats';
 // Only the app's own files are served (not .git, tests, the NBL1 cache, ...).
 function staticFile(path) {
   if (path === '/' || path === '/index.html') return join(root, 'index.html');
-  if (path === '/app/icon.png') return join(root, 'app', 'icon.png');
+  if (path === '/manifest.webmanifest') return join(root, 'manifest.webmanifest');
+  if (/^\/app\/(icon|icon-192|icon-512|apple-touch-icon)\.png$/.test(path)) return join(root, path);
   if (/^\/src\/[\w-]+\.(js|css)$/.test(path)) return join(root, path);
   return null;
 }
